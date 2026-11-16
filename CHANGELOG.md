@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.2.1
+- Faster table opening, especially over a VPN: rows show first and the table's structure loads after them (like DataGrip / TablePlus); autocomplete reads a schema's columns in one query, shared by all query tabs, instead of describing every table one by one; the exact row count runs by itself only for tables up to ~100k rows (bigger ones show ~estimate or "500+", click for the exact count). Measured with 50 ms latency and 152 tables: opening a 200k-row table with a query tab open went from 1.25 s to 0.27 s.
 - In-app updates: the app checks for a new release on launch and every 6 hours and shows an **Update <version>** button in the header (and a toast) when one is out. It opens Settings → Updates with the release notes and **Install & restart**; nothing installs without a click. Updates are signature-checked before install. Turn checking off in Settings → Updates. Apps installed with Homebrew update the same way.
 - Fix: ⌘↵ / ⇧⌘↵ in the query editor could fail with "Unhandled: … getValue" after another query editor had been closed (e.g. after switching database). Editor shortcuts now belong to their own editor.
 - Fix: choosing a TablePlus export file (`.tableplusconnection`) in Import now explains that those files are encrypted and to pick TablePlus under "On this computer", instead of a garbled message.
