@@ -12,6 +12,7 @@ import { StructureView } from './StructureView';
 import { addRow, buildChanges, emptyStaged, History, pendingCount, setCell, setInsertedCell, toggleDelete, type StagedState } from '../lib/changes';
 import { RAW_SQL, toConditions, type FilterRow } from '../lib/filters';
 import { api } from '../lib/ipc';
+import { loadTablePage } from '../lib/tablePage';
 import { displayCombo } from '../lib/keys';
 import { selectTab, useTableWs, type PendingActions } from '../lib/tableWorkspace';
 import { clampDetailWidth, detailWidth, onRowsSelected, saveDetailWidth, setDetailPanel } from '../lib/detailPanel';
@@ -20,7 +21,9 @@ import { useTableGridActions } from './useTableGridActions';
 import { errMsg, useApp, type Tab } from '../store';
 
 /** Above this estimated size the exact COUNT(*) is only run on request. */
-const AUTO_COUNT_LIMIT = 1_000_000;
+/** Tables estimated above this many rows are not COUNT(*)-ed automatically (a full scan that
+ *  holds the session's connection); the status bar offers an exact count on click. */
+export const AUTO_COUNT_LIMIT = 100_000;
 
 export function TableView({ tab }: { tab: Tab }) {
   const { t } = useTranslation();
@@ -68,36 +71,47 @@ export function TableView({ tab }: { tab: Tab }) {
     [s, target],
   );
 
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
     if (!s) return;
+    const seq = ++loadSeq.current;
+    const current = () => seq === loadSeq.current;
     setLoading(true);
     setError(null);
     try {
-      const d = desc ?? (await api.describeTable(s.session_id, target).catch(() => null));
-      // Without an explicit sort, order by primary key so paging is stable.
-      // DynamoDB browses with Scan: no server-side ordering.
-      const order: [string, SortDir][] = isDynamo ? [] : sort.length ? sort : (d?.primary_key ?? []).map((c) => [c, 'asc']);
-      const r = await api.fetchTable(s.session_id, target, { offset: page * pageSize, limit: pageSize, order_by: order, filters: applied });
-      setDesc(d);
-      setRs(r);
-      setStaged(emptyStaged());
-      hist.current.clear();
+      // Rows first, structure after (see lib/tablePage). Without an explicit sort,
+      // pages follow the primary key once it is known so paging stays stable.
+      const d = await loadTablePage(
+        { sessionId: s.session_id, engine: s.config.engine, target, desc, sort, filters: applied, offset: page * pageSize, limit: pageSize },
+        {
+          current,
+          onRows: (r) => {
+            setRs(r);
+            setStaged(emptyStaged());
+            hist.current.clear();
+            setLoading(false);
+          },
+          onDesc: setDesc,
+        },
+      );
+      if (!current()) return;
       // Row count: once per filter set (not per page). Unfiltered tables show the
-      // statistics estimate first (~); the exact COUNT(*) runs lazily, and only on
-      // request for very large tables.
+      // statistics estimate first (~); the exact COUNT(*) runs by itself only for
+      // small tables (like TablePlus' "estimate count" threshold), else on request.
       const key = JSON.stringify(applied);
       if (countKey.current !== key) {
         countKey.current = key;
-        const est = !applied.length && d?.estimated_rows != null && d.estimated_rows >= 0 ? d.estimated_rows : null;
-        setCount(est != null ? { n: est, exact: false } : null);
+        const est = d?.estimated_rows != null && d.estimated_rows >= 0 ? d.estimated_rows : null;
+        setCount(!applied.length && est != null ? { n: est, exact: false } : null);
+        // The table's size decides, filtered or not: a filter on a big table is a full scan too.
         if (est == null || est <= AUTO_COUNT_LIMIT) void runCount(applied);
       }
     } catch (e) {
-      setError(errMsg(e));
+      if (current()) setError(errMsg(e));
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
-  }, [s, target, page, pageSize, sort, applied, desc, isDynamo, runCount]);
+  }, [s, target, page, pageSize, sort, applied, desc, runCount]);
 
   useEffect(() => {
     void load();

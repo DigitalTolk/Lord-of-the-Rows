@@ -66,6 +66,7 @@ export const api = {
   createDatabaseSql: (sessionId: string, name: string) => call<string>('create_database_sql', { sessionId, name }),
   listObjects: (sessionId: string, schema: string | null) => call<T.ObjectRef[]>('list_objects', { sessionId, schema }),
   describeTable: (sessionId: string, target: T.TableTarget) => call<T.TableDescription>('describe_table', { sessionId, target }),
+  listColumns: (sessionId: string, schema: string | null) => call<T.ColumnBrief[]>('list_columns', { sessionId, schema }),
   objectDdl: (sessionId: string, object: T.ObjectRef) => call<string>('object_ddl', { sessionId, object }),
 
   evaluateSql: (sessionId: string, sql: string) => call<T.Evaluation>('evaluate_sql', { sessionId, sql }),

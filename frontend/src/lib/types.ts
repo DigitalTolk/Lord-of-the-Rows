@@ -151,6 +151,13 @@ export interface ForeignKeyDef {
 }
 export interface ConstraintDef { name: string; kind: string; definition?: string | null }
 
+/** A column as listed for a whole schema in one call (autocomplete). */
+export interface ColumnBrief {
+  table: string;
+  name: string;
+  data_type: string;
+}
+
 export interface TableDescription {
   object: ObjectRef;
   columns: ColumnDef[];

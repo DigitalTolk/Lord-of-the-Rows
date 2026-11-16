@@ -516,6 +516,20 @@ impl DatabaseConnection for MySqlConnection {
             .collect())
     }
 
+    async fn list_columns(&self, schema: Option<&str>) -> DbResult<Vec<ColumnBrief>> {
+        let db = self.current_db(schema).await?;
+        Ok(self
+            .text_rows(
+                "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION",
+                vec![mysql_async::Value::from(db)],
+            )
+            .await?
+            .into_iter()
+            .filter_map(|r| Some(ColumnBrief { table: r[0].clone()?, name: r[1].clone()?, data_type: r[2].clone().unwrap_or_default() }))
+            .collect())
+    }
+
     async fn describe_table(&self, target: &TableTarget) -> DbResult<TableDescription> {
         let db = self.current_db(target.schema.as_deref()).await?;
         let t = target.table.clone();

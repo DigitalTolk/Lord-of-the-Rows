@@ -11,6 +11,7 @@ import { Icon } from '../components/icons';
 import { api, IpcError } from '../lib/ipc';
 import { runStream } from '../lib/stream';
 import { bindEditorKeys } from '../lib/editorKeys';
+import { schemaColumns } from '../lib/schemaColumns';
 import { monaco, registerSqlCompletion, setCompletionSource, useEditorTheme } from '../lib/monaco';
 import { formatters, usePlugins } from '../lib/plugins';
 import { DEFAULT_KEYS, displayCombo } from '../lib/keys';
@@ -49,27 +50,17 @@ export function QueryView({ tab, pane = 0 }: { tab: Tab; pane?: 0 | 1 }) {
     if (!pluginsLoaded) void loadPlugins();
   }, [pluginsLoaded, loadPlugins]);
 
-  // Feed schema metadata into autocomplete.
+  // Feed schema metadata into autocomplete: table names now, columns from one
+  // shared per-schema load (see lib/schemaColumns).
   useEffect(() => {
     if (!s) return;
     const objs = s.objects[s.activeSchema ?? ''] ?? [];
-    setCompletionSource({ tables: objs.filter((o) => ['table', 'view', 'materialized_view'].includes(o.kind)).map((o) => ({ name: o.name, schema: o.schema, kind: o.kind })), columns: {} });
-    const tables = objs.filter((o) => o.kind === 'table').slice(0, 200);
+    const tables = objs.filter((o) => ['table', 'view', 'materialized_view'].includes(o.kind)).map((o) => ({ name: o.name, schema: o.schema, kind: o.kind }));
+    setCompletionSource({ tables, columns: {} });
     let cancelled = false;
-    // Lazily describe tables for column completion (bounded).
-    void (async () => {
-      const columns: Record<string, string[]> = {};
-      for (const o of tables) {
-        if (cancelled) return;
-        try {
-          const d = await api.describeTable(s.session_id, { schema: o.schema, table: o.name });
-          columns[o.name] = d.columns.map((c) => c.name);
-        } catch {
-          /* ignore */
-        }
-      }
-      if (!cancelled) setCompletionSource({ tables: objs.filter((o) => ['table', 'view', 'materialized_view'].includes(o.kind)).map((o) => ({ name: o.name, schema: o.schema, kind: o.kind })), columns });
-    })();
+    void schemaColumns(s.session_id, s.activeSchema ?? null, objs).then((columns) => {
+      if (!cancelled) setCompletionSource({ tables, columns });
+    });
     return () => {
       cancelled = true;
     };

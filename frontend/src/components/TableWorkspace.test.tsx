@@ -120,5 +120,7 @@ describe('status pill and bottom bar helpers', () => {
     expect(selectionStatus(1, { n: 859591, exact: false }, 500)).toEqual({ sel: 1, total: '~859,591' });
     expect(selectionStatus(0, { n: 500, exact: true }, 500)).toEqual({ sel: 0, total: '500' });
     expect(selectionStatus(2, null, 300).total).toBe('300');
+    // Unknown total but a full page: more rows may follow.
+    expect(selectionStatus(0, null, 300, true).total).toBe('300+');
   });
 });

@@ -68,6 +68,13 @@ pub trait DatabaseConnection: Send + Sync {
     async fn list_schemas(&self, database: Option<&str>) -> DbResult<Vec<String>>;
     async fn list_objects(&self, schema: Option<&str>) -> DbResult<Vec<ObjectRef>>;
     async fn describe_table(&self, target: &TableTarget) -> DbResult<TableDescription>;
+    /// Every column of every table and view in `schema`, in table then column order,
+    /// in ONE round trip. Used for autocomplete instead of describing tables one by one,
+    /// which over a slow link (VPN) kept the session's connection busy for minutes.
+    async fn list_columns(&self, schema: Option<&str>) -> DbResult<Vec<ColumnBrief>> {
+        let _ = schema;
+        Err(DbError::unsupported("listing a schema's columns"))
+    }
     /// DDL for any object kind, where the engine can produce it.
     async fn object_ddl(&self, object: &ObjectRef) -> DbResult<String>;
 

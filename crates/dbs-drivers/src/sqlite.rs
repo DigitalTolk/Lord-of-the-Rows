@@ -366,6 +366,26 @@ impl DatabaseConnection for SqliteConnection {
         .await
     }
 
+    async fn list_columns(&self, schema: Option<&str>) -> DbResult<Vec<ColumnBrief>> {
+        let schema = schema_name(schema);
+        self.with(move |c| {
+            let master = format!("{}.sqlite_master", Dialect::Sqlite.quote_ident(&schema)?);
+            let rows = text_rows(
+                c,
+                &format!(
+                    "SELECT m.name, p.name, p.type FROM {master} m JOIN pragma_table_info(m.name, ?1) p
+                     WHERE m.type IN ('table','view') AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, p.cid"
+                ),
+                &[&schema],
+            )?;
+            Ok(rows
+                .into_iter()
+                .filter_map(|r| Some(ColumnBrief { table: r[0].clone()?, name: r[1].clone()?, data_type: r[2].clone().unwrap_or_default() }))
+                .collect())
+        })
+        .await
+    }
+
     async fn describe_table(&self, target: &TableTarget) -> DbResult<TableDescription> {
         let schema = schema_name(target.schema.as_deref());
         let table = target.table.clone();

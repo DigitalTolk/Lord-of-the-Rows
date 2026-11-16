@@ -141,6 +141,12 @@ async fn crud_scenario(c: &dyn DatabaseConnection, schema: Option<&str>, table: 
     assert!(desc.ddl.is_some());
     let objs = c.list_objects(schema).await.unwrap();
     assert!(objs.iter().any(|o| o.name == table && o.kind == ObjectKind::Table), "{objs:?}");
+
+    // Autocomplete metadata: the whole schema's columns in one call, in column order.
+    let cols = c.list_columns(schema).await.expect("list_columns");
+    let mine: Vec<&str> = cols.iter().filter(|x| x.table == table).map(|x| x.name.as_str()).collect();
+    assert_eq!(&mine[..2], ["id", "name"], "{cols:?}");
+    assert!(cols.iter().filter(|x| x.table == table).all(|x| !x.data_type.is_empty()), "{cols:?}");
 }
 
 #[tokio::test]

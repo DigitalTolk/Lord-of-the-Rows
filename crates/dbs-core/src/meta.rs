@@ -105,6 +105,15 @@ pub struct ConstraintDef {
     pub definition: Option<String>,
 }
 
+/// One column of a table or view, as listed for a whole schema in a single
+/// round trip (`list_columns`) — enough for autocomplete, unlike `describe_table`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ColumnBrief {
+    pub table: String,
+    pub name: String,
+    pub data_type: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TableDescription {
     pub object: ObjectRef,
