@@ -531,6 +531,22 @@ impl DatabaseConnection for PgConnection {
         Ok(out)
     }
 
+    async fn list_columns(&self, schema: Option<&str>) -> DbResult<Vec<ColumnBrief>> {
+        let s = Self::default_schema(schema);
+        Ok(self
+            .text_rows(
+                "SELECT c.relname::text, a.attname::text, format_type(a.atttypid, a.atttypmod)
+                 FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = $1 AND c.relkind IN ('r','p','f','v','m') AND a.attnum > 0 AND NOT a.attisdropped
+                 ORDER BY c.relname, a.attnum",
+                &[&s],
+            )
+            .await?
+            .into_iter()
+            .filter_map(|r| Some(ColumnBrief { table: r[0].clone()?, name: r[1].clone()?, data_type: r[2].clone().unwrap_or_default() }))
+            .collect())
+    }
+
     async fn describe_table(&self, target: &TableTarget) -> DbResult<TableDescription> {
         let s = Self::default_schema(target.schema.as_deref());
         let t = target.table.clone();

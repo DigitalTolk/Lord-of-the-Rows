@@ -104,10 +104,11 @@ Test platform for everything below: **Linux (Debian bookworm, arm64) in Docker**
 
 | Feature | Status | Evidence |
 |---|---|---|
-| Endpoint validation (https only; http loopback in dev builds), channel → endpoint resolution, no hardcoded URL | TESTED | UT `updater::tests` (endpoint/channel/setting validation) |
+| Endpoint validation (https only; http loopback in dev builds), channel → endpoint resolution, stable defaults to the GitHub release feed | TESTED | UT `updater::tests` (endpoint/channel/setting validation) |
 | Compatibility check: reject non-newer manifest versions; stable rejects pre-releases | TESTED | UT `only_newer_versions_are_accepted...` |
 | Minisign signature check with shipped pubkey; tampered artifact / altered signed version / foreign key rejected | TESTED (at the minisign layer, mirroring the plugin's check) | UT `shipped_pubkey_verifies_release_signatures_and_rejects_tampering`, `shipped_updater_config_keeps_verification_strict` |
-| Auto-check on startup is opt-in (no network when off) | TESTED | vitest `updates.test.ts` |
+| Auto-check on launch + every 6 h (on by default, no network when turned off); "Update <version>" header button → Settings → Updates | TESTED | vitest `updates.test.ts`, `store.test.ts`, `UpdateButton.test.tsx` |
+| Release update bundle signed by the key the app trusts, bound to the version (checked before publishing) | TESTED | `scripts/verify-update-sig.mjs` in `release-macos.sh` |
 | Check now / release notes / download progress / install / restart prompt / failure recovery / `app_updated` audit events | IMPLEMENTED_UNVERIFIED | no end-to-end run against a real signed release + update server yet |
 
 ## Localisation & accessibility

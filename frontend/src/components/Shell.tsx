@@ -1,3 +1,4 @@
+import { UpdateButton } from './UpdateButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, type Tab, type TabKind } from '../store';
@@ -105,6 +106,7 @@ export function TopBar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         <button className="icon-btn" title={t('shell.dashboards')} aria-label={t('shell.dashboards')} disabled={!s} onClick={tool('dashboard', t('shell.dashboards'))}><Icon name="chart" /></button>
         <button className="icon-btn" title={t('query.history')} aria-label={t('query.history')} onClick={tool('history', t('query.history'))}><Icon name="history" /></button>
         <button className="icon-btn" title={t('audit.title')} aria-label={t('audit.title')} onClick={() => openTab({ kind: 'audit', title: t('audit.title') })}><Icon name="shield" /></button>
+        <UpdateButton />
         <ThemeToggle />
         <button className="icon-btn" title={t('settings.title')} aria-label={t('settings.title')} onClick={() => openTab({ kind: 'settings', title: t('settings.title') })}><Icon name="gear" /></button>
         <DetailPanelButton />

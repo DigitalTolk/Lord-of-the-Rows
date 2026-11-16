@@ -198,7 +198,10 @@ fn read_source(st: &AppState, req: PreviewRequest, env: &Env) -> R<(SourceKind, 
             let full = g.path.to_string_lossy().into_owned();
             let Some(kind) = load::sniff(&data, &full) else {
                 if name.to_ascii_lowercase().ends_with(".tableplusconnection") {
-                    return Err(DbError::unsupported("TablePlus export files (they are encrypted). Import from TablePlus on this computer instead"));
+                    return Err(DbError::new(
+                        ErrorKind::Unsupported,
+                        "TablePlus export files are encrypted and can't be read. Choose TablePlus under \"On this computer\" instead.",
+                    ));
                 }
                 return Err(DbError::invalid("this file is not a connection list this app can read"));
             };

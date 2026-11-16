@@ -22,22 +22,40 @@ export function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Automatic checks are on unless turned off in Settings → Updates. */
+export const autoCheckEnabled = (settings: Record<string, unknown>) => settings['updates.autoCheck'] !== false;
+
+/** How often a running app looks for a new release. */
+export const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
+
 /**
- * Startup check. Opt-in only (`updates.autoCheck`, default off): the app is
- * offline-first and must make no unsolicited network requests. Failures are
- * swallowed so a broken update server never disturbs startup.
+ * One automatic check: skipped when turned off; failures are swallowed so an
+ * unreachable update server (offline, VPN) never disturbs the app.
  */
 export async function autoCheckForUpdates(
   settings: Record<string, unknown>,
   check: () => Promise<UpdateCheck>,
-  notify: (version: string) => void,
+  onResult: (r: UpdateCheck) => void,
 ): Promise<UpdateCheck | null> {
-  if (settings['updates.autoCheck'] !== true) return null;
+  if (!autoCheckEnabled(settings)) return null;
   try {
     const r = await check();
-    if (r.status === 'available') notify(r.version);
+    onResult(r);
     return r;
   } catch {
     return null;
   }
+}
+
+/** Checks now and then every `everyMs` (settings are re-read each time). Returns a stop function. */
+export function startUpdateChecks(
+  getSettings: () => Record<string, unknown>,
+  check: () => Promise<UpdateCheck>,
+  onResult: (r: UpdateCheck) => void,
+  everyMs = UPDATE_RECHECK_MS,
+): () => void {
+  const tick = () => void autoCheckForUpdates(getSettings(), check, onResult);
+  tick();
+  const id = setInterval(tick, everyMs);
+  return () => clearInterval(id);
 }

@@ -19,6 +19,13 @@ TAP="DigitalTolk/homebrew-tools"
 VERSION="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
 TAG="v$VERSION"
 DMG="${DMG:-$HOME/Downloads/LordOfTheRows-$VERSION-universal.dmg}"
+# In-app update files written next to the DMG by release-macos.sh (when it had the signing key).
+DIR="$(dirname "$DMG")"
+ASSETS=("$DMG")
+for f in "$DIR/LordOfTheRows-$VERSION-universal.app.tar.gz" "$DIR/LordOfTheRows-$VERSION-universal.app.tar.gz.sig" "$DIR/latest.json"; do
+  [ -f "$f" ] && ASSETS+=("$f")
+done
+[ ${#ASSETS[@]} -eq 4 ] || echo "    (no in-app update files next to the DMG: installed apps won't be offered this release)"
 
 [ -f "$DMG" ] || { echo "Missing $DMG (run scripts/release-macos.sh first)" >&2; exit 1; }
 xcrun stapler validate "$DMG" >/dev/null || { echo "$DMG is not notarized/stapled" >&2; exit 1; }
@@ -37,9 +44,9 @@ or download the DMG below.
 
 SHA-256: \`$SHA\`"
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  gh release upload "$TAG" "$DMG" --repo "$REPO" --clobber
+  gh release upload "$TAG" "${ASSETS[@]}" --repo "$REPO" --clobber
 else
-  gh release create "$TAG" "$DMG" --repo "$REPO" --target "$(git rev-parse HEAD)" --title "Lord of the Rows $VERSION" --notes "$NOTES"
+  gh release create "$TAG" "${ASSETS[@]}" --repo "$REPO" --target "$(git rev-parse HEAD)" --title "Lord of the Rows $VERSION" --notes "$NOTES"
 fi
 
 echo "==> Asking $TAP to update the cask"

@@ -498,6 +498,11 @@ pub async fn list_objects(st: State<'_, AppState>, session_id: String, schema: O
 }
 
 #[tauri::command]
+pub async fn list_columns(st: State<'_, AppState>, session_id: String, schema: Option<String>) -> R<Vec<dbs_core::ColumnBrief>> {
+    st.session(&session_id)?.conn.list_columns(schema.as_deref()).await
+}
+
+#[tauri::command]
 pub async fn describe_table(st: State<'_, AppState>, session_id: String, target: TableTarget) -> R<TableDescription> {
     st.session(&session_id)?.conn.describe_table(&target).await
 }

@@ -24,6 +24,11 @@ OUT_DIR="${OUT_DIR:-$HOME/Downloads}"
 VERSION="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
 APP="target/universal-apple-darwin/release/bundle/macos/Lord of the Rows.app"
 DMG="$OUT_DIR/LordOfTheRows-$VERSION-universal.dmg"
+# In-app update: the stapled app as a tarball, its minisign signature, and the manifest
+# the app polls (releases/latest/download/latest.json — see src-tauri/src/updater.rs).
+UPDATE_TGZ="$OUT_DIR/LordOfTheRows-$VERSION-universal.app.tar.gz"
+MANIFEST="$OUT_DIR/latest.json"
+REPO_URL="https://github.com/DigitalTolk/Lord-of-the-Rows"
 
 # Toolchain on this Mac: rustup from Homebrew; the CLT linker needs the 26.5 SDK.
 export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
@@ -55,17 +60,18 @@ if [ -z "${SKIP_NOTARIZE:-}" ]; then
   fi
 fi
 
+# Updater signing key: CI secret, else the local key file. Without one, no update bundle.
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"   # CI secret
+elif [ -f "$HOME/.dbstudio/updater.key" ]; then
+  export TAURI_SIGNING_PRIVATE_KEY="$(cat "$HOME/.dbstudio/updater.key")" TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+fi
+
 if [ -z "${SKIP_BUILD:-}" ]; then
   echo "==> Building frontend"
   (cd frontend && npm ci --no-fund --silent && npx vite build)
-  CFG='{"build":{"beforeBuildCommand":""}}'
-  if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"   # CI secret
-  elif [ -f "$HOME/.dbstudio/updater.key" ]; then
-    export TAURI_SIGNING_PRIVATE_KEY="$(cat "$HOME/.dbstudio/updater.key")" TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-  else
-    CFG='{"build":{"beforeBuildCommand":""},"bundle":{"createUpdaterArtifacts":false}}'
-  fi
+  # The update bundle is made below from the notarized + stapled app, not by tauri build.
+  CFG='{"build":{"beforeBuildCommand":""},"bundle":{"createUpdaterArtifacts":false}}'
   echo "==> Building universal app (signed with: $SIGN_ID)"
   rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
   ./frontend/node_modules/.bin/tauri build --target universal-apple-darwin --bundles app --config "$CFG"
@@ -86,8 +92,36 @@ elif [ -z "${SKIP_NOTARIZE:-}" ]; then
   spctl -a -vv -t exec "$APP"
 fi
 
-echo "==> Creating DMG"
 mkdir -p "$OUT_DIR"
+rm -f "$UPDATE_TGZ" "$UPDATE_TGZ.sig" "$MANIFEST"
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+  echo "==> Update bundle (signed for $VERSION)"
+  COPYFILE_DISABLE=1 tar -czf "$UPDATE_TGZ" -C "$(dirname "$APP")" "$(basename "$APP")"
+  ./frontend/node_modules/.bin/tauri signer sign --app-version "$VERSION" "$UPDATE_TGZ" >/dev/null
+  # Fail now (not on every user's Mac) if the key doesn't match the one the app trusts.
+  node scripts/verify-update-sig.mjs "$UPDATE_TGZ" "$UPDATE_TGZ.sig" "$VERSION"
+  # Release notes: this version's CHANGELOG section.
+  awk -v v="## $VERSION" '$0==v{f=1;next} /^## /{if(f)exit} f' CHANGELOG.md > "$OUT_DIR/.notes.md"
+  URL="$REPO_URL/releases/download/v$VERSION/$(basename "$UPDATE_TGZ")" SIG_FILE="$UPDATE_TGZ.sig" NOTES_FILE="$OUT_DIR/.notes.md" VERSION="$VERSION" \
+    node -e '
+      const fs = require("fs");
+      const sig = fs.readFileSync(process.env.SIG_FILE, "utf8").trim();
+      const asset = { signature: sig, url: process.env.URL };
+      const m = {
+        version: process.env.VERSION,
+        notes: fs.readFileSync(process.env.NOTES_FILE, "utf8").trim(),
+        pub_date: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+        // One universal build serves both architectures.
+        platforms: { "darwin-aarch64": asset, "darwin-x86_64": asset },
+      };
+      fs.writeFileSync(process.argv[1], JSON.stringify(m, null, 2) + "\n");
+    ' "$MANIFEST"
+  rm -f "$OUT_DIR/.notes.md"
+else
+  echo "==> No updater signing key: skipping the in-app update bundle"
+fi
+
+echo "==> Creating DMG"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 ditto "$APP" "$STAGE/Lord of the Rows.app"

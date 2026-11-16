@@ -7,9 +7,27 @@ signature does not verify. `requireSignedVersion: true` additionally binds each 
 version it was signed for, so a tampered manifest cannot pair a new version number with an older
 (validly signed) build.
 
-The app ships with **no update URL**. Users (or an admin, via settings import) set
-`updates.endpoint.stable` / `updates.endpoint.beta` in Settings → Updates. Automatic checks on
-startup are off by default (`updates.autoCheck`).
+The **stable** channel reads the manifest of the newest GitHub release,
+`https://github.com/DigitalTolk/Lord-of-the-Rows/releases/latest/download/latest.json`, unless
+`updates.endpoint.stable` points elsewhere; the **beta** channel has no default
+(`updates.endpoint.beta`). The app checks on launch and every 6 hours and, when a newer release is
+found, shows an **Update <version>** button in the header that opens Settings → Updates (notes,
+Install & restart). Nothing is installed without a click. Turn automatic checks off with
+`updates.autoCheck = false` (Settings → Updates).
+
+## macOS releases (what CI does)
+
+`scripts/release-macos.sh` (run by `.github/workflows/release.yml` on a `v*` tag) builds, signs and
+notarizes the app, then, from the **stapled** app, writes next to the DMG:
+
+- `LordOfTheRows-<version>-universal.app.tar.gz` and its `.sig` (signed with `--app-version`),
+- `latest.json` (notes = the version's `CHANGELOG.md` section; `darwin-aarch64` and
+  `darwin-x86_64` both point at the universal tarball).
+
+It then runs `scripts/verify-update-sig.mjs`, which checks the signature against the public key in
+`tauri.conf.json` and the version binding, and stops the release if either is wrong.
+`scripts/publish-homebrew.sh` uploads the DMG and these three files to the GitHub release, so
+`releases/latest/download/latest.json` always describes the newest release.
 
 ## Keys
 
@@ -36,8 +54,9 @@ as compromised and rotate immediately.
 
 ## Building signed update artifacts
 
-`bundle.createUpdaterArtifacts` is `true`, so `tauri build` signs the updater artifacts and **fails
-if no private key is provided**. Release builds set:
+`bundle.createUpdaterArtifacts` is `true`, so a plain `tauri build` signs the updater artifacts and
+**fails if no private key is provided** (the macOS release script turns this off and signs the
+stapled app itself, above). Release builds set:
 
 ```sh
 export TAURI_SIGNING_PRIVATE_KEY="$(cat /path/to/updater.key)"   # key contents, or a path to the key file

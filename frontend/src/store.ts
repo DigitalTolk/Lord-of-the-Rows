@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import i18n from './i18n';
 import { api } from './lib/ipc';
 import { withHostKeyTrust } from './lib/hostkey';
-import { autoCheckForUpdates } from './lib/updates';
+import { startUpdateChecks } from './lib/updates';
 import { closeCurrentWindow, currentWindowLabel, persistsWorkspace } from './lib/windows';
-import type { AppInfo, KeyspaceInfo, ObjectRef, SessionOpened, StoredConnection, TableTarget } from './lib/types';
+import type { AppInfo, AvailableUpdate, KeyspaceInfo, ObjectRef, SessionOpened, StoredConnection, TableTarget, UpdateCheck } from './lib/types';
 
 export type TabKind = 'query' | 'table' | 'structure' | 'diff' | 'audit' | 'monitor' | 'er' | 'settings' | 'import' | 'backup' | 'history' | 'dashboard';
 
@@ -69,8 +69,16 @@ interface State {
   switchSession(id: string): void;
   connectionDialog?: { id?: string; duplicateOf?: string } | null;
   toasts: { id: number; kind: 'info' | 'error' | 'ok'; text: string; action?: ToastAction }[];
+  /** A newer release found by the automatic or a manual check (null when up to date). */
+  update: AvailableUpdate | null;
+  /** Settings section to show next time Settings renders (consumed by SettingsView). */
+  settingsSection: string | null;
 
   init(): Promise<void>;
+  /** Records an update-check result; announces a newly found version once. */
+  setUpdateResult(r: UpdateCheck): void;
+  /** Opens Settings → Updates. */
+  openUpdates(): void;
   reloadConnections(): Promise<void>;
   setSetting(key: string, value: unknown): Promise<void>;
   /** `database` (Postgres family): open the saved connection on another database of the same server. */
@@ -125,12 +133,15 @@ export const useApp = create<State>((set, get) => ({
   launcher: false,
   lastTab: {},
   toasts: [],
+  update: null,
+  settingsSection: null,
 
   async init() {
     const [info, settings, connections] = await Promise.all([api.appInfo(), api.getSettings(), api.listConnections()]);
     set({ info, settings, connections });
-    // Opt-in only (`updates.autoCheck`); runs in the background and never blocks startup.
-    void autoCheckForUpdates(settings, api.checkUpdate, (v) => get().toast('info', i18n.t('updates.autoFound', { version: v })));
+    // Background update checks (on launch, then every few hours; off via updates.autoCheck).
+    // The main window checks; other windows would only repeat it.
+    if (persistsWorkspace(currentWindowLabel())) startUpdateChecks(() => get().settings, api.checkUpdate, (r) => get().setUpdateResult(r));
     // Restore saved workspace tabs (query text + split layout; sessions must be reopened explicitly).
     // Only the main window restores; extra windows start with an empty workspace.
     if (persistsWorkspace(currentWindowLabel())) {
@@ -344,6 +355,20 @@ export const useApp = create<State>((set, get) => ({
     } catch (e) {
       get().toast('error', errMsg(e));
     }
+  },
+
+  setUpdateResult(r) {
+    const prev = get().update;
+    const next = r.status === 'available' ? r : null;
+    set({ update: next });
+    if (next && prev?.version !== next.version) {
+      get().toast('info', i18n.t('updates.autoFound', { version: next.version }), { label: i18n.t('updates.view'), run: () => get().openUpdates() });
+    }
+  },
+
+  openUpdates() {
+    set({ settingsSection: 'updates' });
+    get().openTab({ kind: 'settings', title: i18n.t('settings.title') });
   },
 
   toast(kind, text, action) {

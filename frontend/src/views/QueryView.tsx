@@ -10,6 +10,8 @@ import { ErrorBox, Spinner } from '../components/ui';
 import { Icon } from '../components/icons';
 import { api, IpcError } from '../lib/ipc';
 import { runStream } from '../lib/stream';
+import { bindEditorKeys } from '../lib/editorKeys';
+import { schemaColumns } from '../lib/schemaColumns';
 import { monaco, registerSqlCompletion, setCompletionSource, useEditorTheme } from '../lib/monaco';
 import { formatters, usePlugins } from '../lib/plugins';
 import { DEFAULT_KEYS, displayCombo } from '../lib/keys';
@@ -48,27 +50,17 @@ export function QueryView({ tab, pane = 0 }: { tab: Tab; pane?: 0 | 1 }) {
     if (!pluginsLoaded) void loadPlugins();
   }, [pluginsLoaded, loadPlugins]);
 
-  // Feed schema metadata into autocomplete.
+  // Feed schema metadata into autocomplete: table names now, columns from one
+  // shared per-schema load (see lib/schemaColumns).
   useEffect(() => {
     if (!s) return;
     const objs = s.objects[s.activeSchema ?? ''] ?? [];
-    setCompletionSource({ tables: objs.filter((o) => ['table', 'view', 'materialized_view'].includes(o.kind)).map((o) => ({ name: o.name, schema: o.schema, kind: o.kind })), columns: {} });
-    const tables = objs.filter((o) => o.kind === 'table').slice(0, 200);
+    const tables = objs.filter((o) => ['table', 'view', 'materialized_view'].includes(o.kind)).map((o) => ({ name: o.name, schema: o.schema, kind: o.kind }));
+    setCompletionSource({ tables, columns: {} });
     let cancelled = false;
-    // Lazily describe tables for column completion (bounded).
-    void (async () => {
-      const columns: Record<string, string[]> = {};
-      for (const o of tables) {
-        if (cancelled) return;
-        try {
-          const d = await api.describeTable(s.session_id, { schema: o.schema, table: o.name });
-          columns[o.name] = d.columns.map((c) => c.name);
-        } catch {
-          /* ignore */
-        }
-      }
-      if (!cancelled) setCompletionSource({ tables: objs.filter((o) => ['table', 'view', 'materialized_view'].includes(o.kind)).map((o) => ({ name: o.name, schema: o.schema, kind: o.kind })), columns });
-    })();
+    void schemaColumns(s.session_id, s.activeSchema ?? null, objs).then((columns) => {
+      if (!cancelled) setCompletionSource({ tables, columns });
+    });
     return () => {
       cancelled = true;
     };
@@ -77,8 +69,9 @@ export function QueryView({ tab, pane = 0 }: { tab: Tab; pane?: 0 | 1 }) {
   const run = useCallback(
     async (which: 'all' | 'current' | 'selection') => {
       const ed = editorRef.current;
-      if (!ed || !s) return;
-      const model = ed.getModel()!;
+      // A disposed editor (its tab closed or the session switched) has no model.
+      const model = ed?.getModel();
+      if (!ed || !model || !s) return;
       const full = model.getValue();
       let sql = full;
       const selection = ed.getSelection();
@@ -233,15 +226,23 @@ export function QueryView({ tab, pane = 0 }: { tab: Tab; pane?: 0 | 1 }) {
     ed.focus();
   };
 
+  const keysRef = useRef({ run, fmt, cancel });
+  keysRef.current = { run, fmt, cancel };
+
   const onMount: OnMount = (ed) => {
     editorRef.current = ed;
     registerSqlCompletion();
     const K = monaco.KeyMod;
     const C = monaco.KeyCode;
-    ed.addCommand(K.CtrlCmd | C.Enter, () => void run('selection'));
-    ed.addCommand(K.CtrlCmd | K.Shift | C.Enter, () => void run('all'));
-    ed.addCommand(K.CtrlCmd | K.Alt | C.KeyF, fmt);
-    ed.addCommand(K.CtrlCmd | C.Period, () => void cancel());
+    // Editor-scoped (not addCommand, which is global and outlives this editor);
+    // handlers go through a ref so they always see the current session.
+    const keys = bindEditorKeys(ed, [
+      { id: 'dbs.runCurrent', label: 'Run statement', keybinding: K.CtrlCmd | C.Enter, run: () => void keysRef.current.run('selection') },
+      { id: 'dbs.runAll', label: 'Run all', keybinding: K.CtrlCmd | K.Shift | C.Enter, run: () => void keysRef.current.run('all') },
+      { id: 'dbs.format', label: 'Format SQL', keybinding: K.CtrlCmd | K.Alt | C.KeyF, run: () => keysRef.current.fmt() },
+      { id: 'dbs.cancel', label: 'Cancel query', keybinding: K.CtrlCmd | C.Period, run: () => void keysRef.current.cancel() },
+    ]);
+    ed.onDidDispose(() => keys.dispose());
     ed.onDidChangeModelContent(() => {
       monaco.editor.setModelMarkers(ed.getModel()!, 'db', []);
       updateTab(tab.id, { [textKey]: ed.getValue() });

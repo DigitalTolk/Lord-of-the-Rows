@@ -13,8 +13,9 @@ export interface RowCount {
 }
 
 /** "1 of ~859,591 rows selected" (estimates are marked with ~). */
-export function selectionStatus(selected: number, count: RowCount | null, loaded: number): { sel: number; total: string } {
-  const total = count ? `${count.exact ? '' : '~'}${fmtNumber(count.n)}` : fmtNumber(loaded);
+export function selectionStatus(selected: number, count: RowCount | null, loaded: number, pageFull = false): { sel: number; total: string } {
+  // Unknown total with a full page: "300+" (more rows may follow), as DataGrip shows it.
+  const total = count ? `${count.exact ? '' : '~'}${fmtNumber(count.n)}` : `${fmtNumber(loaded)}${pageFull ? '+' : ''}`;
   return { sel: selected, total };
 }
 
@@ -45,7 +46,7 @@ export interface TableBottomBarProps {
 /** Bottom bar of a table tab: Data | Structure | Index · + · status · filter/detail toggles · paging. */
 export function TableBottomBar(p: TableBottomBarProps) {
   const { t } = useTranslation();
-  const { sel, total } = selectionStatus(p.selected, p.count, p.loaded);
+  const { sel, total } = selectionStatus(p.selected, p.count, p.loaded, !p.count && p.loaded >= p.pageSize);
   const from = p.page * p.pageSize + (p.loaded ? 1 : 0);
   const to = p.page * p.pageSize + p.loaded;
   const pages = p.count?.exact ? Math.max(1, Math.ceil(p.count.n / p.pageSize)) : null;
@@ -66,7 +67,7 @@ export function TableBottomBar(p: TableBottomBarProps) {
       <div className="flex items-center justify-center gap-1.5 whitespace-nowrap text-muted" aria-live="polite">
         {p.mode === 'data' && (
           <>
-            {p.count && !p.count.exact ? (
+            {!p.count?.exact && !p.counting && (p.count || p.loaded >= p.pageSize) ? (
               <button className="hover:text-fg hover:underline" title={t('tableWs.estimate')} onClick={p.onExactCount}>{t('tableWs.rowsSelected', { sel, total })}</button>
             ) : (
               <span>{t('tableWs.rowsSelected', { sel, total })}</span>

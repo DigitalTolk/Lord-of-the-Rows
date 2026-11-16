@@ -505,11 +505,11 @@
     "channel": "Update-Kanal",
     "stable": "Stabil",
     "beta": "Beta",
-    "autoCheck": "Beim Start nach Updates suchen",
-    "autoCheckHint": "Standardmäßig aus: Lord of the Rows stellt keine Netzwerkanfragen, solange Sie dies nicht aktivieren oder auf „Jetzt prüfen“ klicken.",
+    "autoCheck": "Automatisch nach Updates suchen",
+    "autoCheckHint": "Sucht beim Start und alle 6 Stunden auf GitHub nach einer neuen Version. Installiert wird erst, wenn Sie auf Installieren klicken.",
     "endpointStable": "Manifest-URL (Stabil)",
     "endpointBeta": "Manifest-URL (Beta)",
-    "endpointHint": "HTTPS-URL des signierten latest.json-Manifests für diesen Kanal.",
+    "endpointHint": "HTTPS-URL des signierten latest.json-Manifests. Lassen Sie Stabil leer, um die offiziellen Releases zu verwenden.",
     "checkNow": "Jetzt prüfen",
     "checking": "Wird geprüft …",
     "notConfigured": "Für den Kanal {{channel}} sind keine Updates konfiguriert. Geben Sie oben eine Manifest-URL ein.",
@@ -525,7 +525,10 @@
     "later": "Später",
     "failed": "Update fehlgeschlagen: {{error}}. Lord of the Rows wurde nicht verändert und läuft weiter.",
     "signed": "Updates werden vor der Installation mit dem Release-Signaturschlüssel von Lord of the Rows überprüft.",
-    "autoFound": "Lord of the Rows {{version}} ist verfügbar. Öffnen Sie Einstellungen → Updates, um es zu installieren."
+    "autoFound": "Lord of the Rows {{version}} ist verfügbar.",
+    "view": "Ansehen",
+    "pill": "Update {{version}}",
+    "pillTitle": "Lord of the Rows {{version}} ist verfügbar (installiert: {{current}}). Klicken, um Änderungen zu sehen und zu installieren."
   },
   "ai": {
     "title": "KI-Assistent",

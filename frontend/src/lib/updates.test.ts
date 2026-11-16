@@ -1,25 +1,49 @@
 import { describe, expect, it, vi } from 'vitest';
-import { autoCheckForUpdates, channelOf, endpointKey, formatBytes, progressPercent } from './updates';
+import { autoCheckEnabled, autoCheckForUpdates, channelOf, endpointKey, formatBytes, progressPercent, startUpdateChecks } from './updates';
 import type { UpdateCheck } from './types';
 
 const available: UpdateCheck = { status: 'available', channel: 'stable', current_version: '0.1.0', version: '0.2.0', notes: 'n' };
 
 describe('updates', () => {
-  it('does not touch the network unless auto-check is enabled', async () => {
+  it('checks automatically unless turned off', async () => {
     const check = vi.fn(async () => available);
-    const notify = vi.fn();
-    expect(await autoCheckForUpdates({}, check, notify)).toBeNull();
-    expect(await autoCheckForUpdates({ 'updates.autoCheck': 'true' }, check, notify)).toBeNull();
+    const onResult = vi.fn();
+    expect(autoCheckEnabled({})).toBe(true);
+    expect(autoCheckEnabled({ 'updates.autoCheck': false })).toBe(false);
+    expect(await autoCheckForUpdates({ 'updates.autoCheck': false }, check, onResult)).toBeNull();
     expect(check).not.toHaveBeenCalled();
-    expect(await autoCheckForUpdates({ 'updates.autoCheck': true }, check, notify)).toEqual(available);
-    expect(notify).toHaveBeenCalledWith('0.2.0');
+    expect(await autoCheckForUpdates({}, check, onResult)).toEqual(available);
+    expect(onResult).toHaveBeenCalledWith(available);
   });
 
-  it('swallows startup check failures and only notifies for available updates', async () => {
-    const notify = vi.fn();
-    expect(await autoCheckForUpdates({ 'updates.autoCheck': true }, () => Promise.reject(new Error('offline')), notify)).toBeNull();
-    await autoCheckForUpdates({ 'updates.autoCheck': true }, async () => ({ status: 'up_to_date', channel: 'stable', current_version: '0.1.0' }), notify);
-    expect(notify).not.toHaveBeenCalled();
+  it('swallows check failures and reports every result', async () => {
+    const onResult = vi.fn();
+    expect(await autoCheckForUpdates({}, () => Promise.reject(new Error('offline')), onResult)).toBeNull();
+    expect(onResult).not.toHaveBeenCalled();
+    const upToDate: UpdateCheck = { status: 'up_to_date', channel: 'stable', current_version: '0.1.0' };
+    await autoCheckForUpdates({}, async () => upToDate, onResult);
+    expect(onResult).toHaveBeenCalledWith(upToDate);
+  });
+
+  it('re-checks on an interval with fresh settings until stopped', async () => {
+    vi.useFakeTimers();
+    try {
+      let settings: Record<string, unknown> = {};
+      const check = vi.fn(async () => available);
+      const stop = startUpdateChecks(() => settings, check, () => {}, 1000);
+      expect(check).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(check).toHaveBeenCalledTimes(2);
+      settings = { 'updates.autoCheck': false };
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(check).toHaveBeenCalledTimes(2);
+      settings = {};
+      stop();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(check).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('computes progress and resolves channel settings', () => {

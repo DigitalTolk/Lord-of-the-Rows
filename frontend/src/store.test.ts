@@ -15,7 +15,8 @@ vi.mock('./lib/ipc', () => ({
   },
   IpcError: Error,
 }));
-vi.mock('./lib/updates', () => ({ autoCheckForUpdates: async () => undefined }));
+const updateChecks = vi.hoisted(() => ({ start: vi.fn() }));
+vi.mock('./lib/updates', () => ({ startUpdateChecks: updateChecks.start }));
 vi.mock('./lib/windows', async (orig) => ({ ...(await orig<typeof import('./lib/windows')>()), currentWindowLabel: () => ipc.label }));
 
 import { restoreWorkspace, useApp, workspaceSnapshot, type Tab } from './store';
@@ -85,6 +86,7 @@ describe('window-scoped workspace', () => {
     expect(useApp.getState().tabs.map((t) => t.title)).toEqual(['Saved']);
     expect(useApp.getState().tabs[0].split).toBe('right');
     expect(useApp.getState().activeTab).toBe('q1');
+    expect(updateChecks.start).toHaveBeenCalledTimes(1);
   });
 
   it('a secondary window starts with an empty workspace and does not persist', async () => {
@@ -94,6 +96,8 @@ describe('window-scoped workspace', () => {
     expect(useApp.getState().tabs).toEqual([]);
     expect(persistsWorkspace('window-3')).toBe(false);
     expect(persistsWorkspace('main')).toBe(true);
+    // Only the main window checks for updates.
+    expect(updateChecks.start).not.toHaveBeenCalled();
   });
 
   it('opens a new window through the backend and reports failures', async () => {
@@ -129,3 +133,30 @@ describe('openConnection', () => {
   });
 });
 
+describe('update available', () => {
+  beforeEach(() => {
+    reset();
+    useApp.setState({ update: null, settingsSection: null, toasts: [] });
+  });
+  const avail = (version: string) => ({ status: 'available' as const, channel: 'stable' as const, current_version: '0.2.0', version });
+
+  it('remembers a found release and announces each new version once', () => {
+    const st = useApp.getState();
+    st.setUpdateResult(avail('0.2.1'));
+    st.setUpdateResult(avail('0.2.1'));
+    expect(useApp.getState().update?.version).toBe('0.2.1');
+    expect(useApp.getState().toasts).toHaveLength(1);
+    st.setUpdateResult(avail('0.2.2'));
+    expect(useApp.getState().toasts).toHaveLength(2);
+    st.setUpdateResult({ status: 'up_to_date', channel: 'stable', current_version: '0.2.2' });
+    expect(useApp.getState().update).toBeNull();
+  });
+
+  it('the toast action opens Settings at the Updates section', () => {
+    useApp.getState().setUpdateResult(avail('0.2.1'));
+    useApp.getState().toasts[0].action!.run();
+    const st = useApp.getState();
+    expect(st.settingsSection).toBe('updates');
+    expect(st.tabs.find((t) => t.id === st.activeTab)?.kind).toBe('settings');
+  });
+});

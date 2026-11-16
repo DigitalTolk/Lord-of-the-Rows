@@ -151,6 +151,13 @@ export interface ForeignKeyDef {
 }
 export interface ConstraintDef { name: string; kind: string; definition?: string | null }
 
+/** A column as listed for a whole schema in one call (autocomplete). */
+export interface ColumnBrief {
+  table: string;
+  name: string;
+  data_type: string;
+}
+
 export interface TableDescription {
   object: ObjectRef;
   columns: ColumnDef[];
@@ -246,6 +253,7 @@ export type UpdateCheck =
   | { status: 'not_configured'; channel: UpdateChannel; current_version: string }
   | { status: 'up_to_date'; channel: UpdateChannel; current_version: string }
   | { status: 'available'; channel: UpdateChannel; current_version: string; version: string; notes?: string | null; date?: string | null };
+export type AvailableUpdate = Extract<UpdateCheck, { status: 'available' }>;
 export type UpdateProgress = { phase: 'downloading'; downloaded: number; total?: number | null } | { phase: 'verifying' } | { phase: 'installing' };
 export interface PickedFile { grant: string; name: string; display_path: string }
 

@@ -1,3 +1,4 @@
+import { UpdateButton } from './UpdateButton';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/ipc';
@@ -107,6 +108,7 @@ export function Welcome() {
             <button className="btn h-8 w-full" onClick={() => { openTab({ kind: 'settings', title: t('settings.title') }); useApp.setState({ launcher: false }); }}>
               <Icon name="gear" size={15} /> {t('settings.title')}
             </button>
+            <UpdateButton className="h-8 w-full" />
           </div>
           <p className="mt-auto text-[0.78rem] text-muted">{t('welcome.footer', { backend: info?.secret_backend ?? t('welcome.keychain') })}</p>
         </div>
