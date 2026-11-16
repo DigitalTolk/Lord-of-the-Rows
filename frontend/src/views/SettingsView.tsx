@@ -7,7 +7,7 @@ import { api } from '../lib/ipc';
 import type { AiProvider, AiStatus } from '../lib/types';
 import { DEFAULT_KEYS, type KeyAction } from '../lib/keys';
 import type { UpdateChannel, UpdateCheck, UpdateProgress } from '../lib/types';
-import { channelOf, endpointKey, formatBytes, PROGRESS_EVENT, progressPercent } from '../lib/updates';
+import { autoCheckEnabled, channelOf, endpointKey, formatBytes, PROGRESS_EVENT, progressPercent } from '../lib/updates';
 import { fmtNumber } from '../lib/format';
 import { LANGUAGE_SETTING, LANGUAGES, parseLanguagePref, systemLanguage } from '../i18n';
 import { PluginsSettings } from './PluginsSettings';
@@ -109,6 +109,12 @@ export function SettingsView() {
   const { t } = useTranslation();
   const { settings, setSetting, toast, info } = useApp();
   const [section, setSection] = useState<(typeof SECTIONS)[number]>('appearance');
+  // "Update available" (and similar shortcuts) ask for a section via the store.
+  const requested = useApp((s) => s.settingsSection);
+  useEffect(() => {
+    if (requested && (SECTIONS as readonly string[]).includes(requested)) setSection(requested as (typeof SECTIONS)[number]);
+    if (requested) useApp.setState({ settingsSection: null });
+  }, [requested]);
   const get = <T,>(k: string, d: T): T => (settings[k] as T) ?? d;
   const set = (k: string, v: unknown) => setSetting(k, v).catch((e) => toast('error', errMsg(e)));
 
@@ -257,10 +263,13 @@ function EndpointField({ channel }: { channel: UpdateChannel }) {
 
 function UpdatesSection() {
   const { t } = useTranslation();
-  const { settings, setSetting, toast } = useApp();
+  const { settings, setSetting, toast, setUpdateResult } = useApp();
+  const known = useApp((s) => s.update);
   const channel = channelOf(settings);
   const [busy, setBusy] = useState<'checking' | 'installing' | null>(null);
-  const [result, setResult] = useState<UpdateCheck | null>(null);
+  const [checked, setResult] = useState<UpdateCheck | null>(null);
+  // Until "Check now" runs here, show what the background check found.
+  const result = busy === 'checking' ? null : (checked ?? known);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [installed, setInstalled] = useState<string | null>(null);
@@ -284,7 +293,9 @@ function UpdatesSection() {
     setError(null);
     setResult(null);
     try {
-      setResult(await api.checkUpdate());
+      const r = await api.checkUpdate();
+      setResult(r);
+      setUpdateResult(r);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -298,6 +309,7 @@ function UpdatesSection() {
     try {
       const r = await api.installUpdate(version);
       setInstalled(r.version);
+      useApp.setState({ update: null });
     } catch (e) {
       // Failed or rejected (e.g. bad signature): nothing was installed, the app keeps running.
       setError(t('updates.failed', { error: errMsg(e) }));
@@ -312,13 +324,13 @@ function UpdatesSection() {
     <>
       <p className="mb-3 text-sm">{t('updates.signed')}</p>
       <Field label={t('updates.channel')}>
-        <select className="input" value={channel} disabled={busy !== null} onChange={(e) => { setResult(null); set('updates.channel', e.target.value); }}>
+        <select className="input" value={channel} disabled={busy !== null} onChange={(e) => { setResult(null); useApp.setState({ update: null }); set('updates.channel', e.target.value); }}>
           <option value="stable">{t('updates.stable')}</option>
           <option value="beta">{t('updates.beta')}</option>
         </select>
       </Field>
       <label className="mb-1 flex items-center gap-2">
-        <input type="checkbox" checked={settings['updates.autoCheck'] === true} onChange={(e) => set('updates.autoCheck', e.target.checked)} />
+        <input type="checkbox" checked={autoCheckEnabled(settings)} onChange={(e) => set('updates.autoCheck', e.target.checked)} />
         {t('updates.autoCheck')}
       </label>
       <p className="mb-3 text-xs text-muted">{t('updates.autoCheckHint')}</p>

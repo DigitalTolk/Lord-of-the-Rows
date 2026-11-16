@@ -246,6 +246,7 @@ export type UpdateCheck =
   | { status: 'not_configured'; channel: UpdateChannel; current_version: string }
   | { status: 'up_to_date'; channel: UpdateChannel; current_version: string }
   | { status: 'available'; channel: UpdateChannel; current_version: string; version: string; notes?: string | null; date?: string | null };
+export type AvailableUpdate = Extract<UpdateCheck, { status: 'available' }>;
 export type UpdateProgress = { phase: 'downloading'; downloaded: number; total?: number | null } | { phase: 'verifying' } | { phase: 'installing' };
 export interface PickedFile { grant: string; name: string; display_path: string }
 

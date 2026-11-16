@@ -7,8 +7,10 @@
 //! signed build. Nothing here relaxes those checks.
 //!
 //! The webview gets no updater plugin permissions: it can only call the
-//! commands below, which read the endpoint from settings (no hardcoded remote
-//! URL — the app is offline-first) and emit `update://progress` events.
+//! commands below, which read the endpoint from settings and emit
+//! `update://progress` events. The stable channel falls back to the GitHub
+//! release feed ([`DEFAULT_STABLE_ENDPOINT`]); the beta channel has no default.
+//! Checking can be turned off (`updates.autoCheck = false`).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -27,6 +29,8 @@ use crate::state::{AppState, APP_VERSION};
 type R<T> = Result<T, DbError>;
 
 pub const PROGRESS_EVENT: &str = "update://progress";
+/// Update manifest of the newest published release (written by scripts/release-macos.sh).
+pub const DEFAULT_STABLE_ENDPOINT: &str = "https://github.com/DigitalTolk/Lord-of-the-Rows/releases/latest/download/latest.json";
 const MAX_URL_LEN: usize = 2048;
 const MAX_NOTES_LEN: usize = 64 * 1024;
 /// Emit at most one progress event per this many downloaded bytes.
@@ -103,13 +107,17 @@ pub fn validate_endpoint(raw: &str, allow_loopback_http: bool) -> R<Url> {
     }
 }
 
-/// Picks the endpoint for `channel`. `Ok(None)` means updates are not configured for it.
+/// Picks the endpoint for `channel`: the configured URL, else (stable only) the
+/// release feed. `Ok(None)` means updates are not configured for it.
 pub fn resolve_endpoint(channel: Channel, stable: Option<&str>, beta: Option<&str>, allow_loopback_http: bool) -> R<Option<Url>> {
+    fn set(v: Option<&str>) -> Option<&str> {
+        v.map(str::trim).filter(|s| !s.is_empty())
+    }
     let raw = match channel {
-        Channel::Stable => stable,
-        Channel::Beta => beta,
+        Channel::Stable => Some(set(stable).unwrap_or(DEFAULT_STABLE_ENDPOINT)),
+        Channel::Beta => set(beta),
     };
-    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+    match raw {
         Some(s) => validate_endpoint(s, allow_loopback_http).map(Some),
         None => Ok(None),
     }
@@ -321,7 +329,10 @@ mod tests {
         assert_eq!(resolve_endpoint(Channel::Stable, s, b, false).unwrap().unwrap().as_str(), "https://u.example.com/stable.json");
         assert_eq!(resolve_endpoint(Channel::Beta, s, b, false).unwrap().unwrap().as_str(), "https://u.example.com/beta.json");
         assert!(resolve_endpoint(Channel::Beta, s, None, false).unwrap().is_none());
-        assert!(resolve_endpoint(Channel::Stable, Some("   "), b, false).unwrap().is_none());
+        // Stable falls back to the release feed; beta has no default.
+        assert_eq!(resolve_endpoint(Channel::Stable, Some("   "), b, false).unwrap().unwrap().as_str(), DEFAULT_STABLE_ENDPOINT);
+        assert_eq!(resolve_endpoint(Channel::Stable, None, None, false).unwrap().unwrap().as_str(), DEFAULT_STABLE_ENDPOINT);
+        assert!(resolve_endpoint(Channel::Beta, s, Some(" "), false).unwrap().is_none());
         assert!(resolve_endpoint(Channel::Stable, Some("http://u.example.com/x"), b, false).is_err());
     }
 
@@ -389,7 +400,7 @@ mod tests {
         for k in ["dangerousInsecureTransportProtocol", "dangerousAcceptInvalidCerts", "dangerousAcceptInvalidHostnames", "allowDowngrades"] {
             assert!(cfg.get(k).is_none_or(|v| v == &json!(false)), "{k} must not be enabled");
         }
-        // No hardcoded remote endpoint: the URL comes from user settings only.
+        // No endpoint in the config: it comes from settings, else DEFAULT_STABLE_ENDPOINT.
         assert!(cfg.get("endpoints").is_none_or(|v| v.as_array().is_some_and(|a| a.is_empty())));
     }
 

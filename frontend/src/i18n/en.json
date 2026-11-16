@@ -505,11 +505,11 @@
     "channel": "Update channel",
     "stable": "Stable",
     "beta": "Beta",
-    "autoCheck": "Check for updates on startup",
-    "autoCheckHint": "Off by default: Lord of the Rows makes no network requests unless you enable this or click Check now.",
+    "autoCheck": "Check for updates automatically",
+    "autoCheckHint": "Looks for a new release on GitHub at startup and every 6 hours. Nothing is installed until you click Install.",
     "endpointStable": "Stable manifest URL",
     "endpointBeta": "Beta manifest URL",
-    "endpointHint": "HTTPS URL of the signed latest.json manifest for this channel.",
+    "endpointHint": "HTTPS URL of the signed latest.json manifest. Leave Stable empty to use the official releases.",
     "checkNow": "Check now",
     "checking": "Checking…",
     "notConfigured": "Updates are not configured for the {{channel}} channel. Enter a manifest URL above.",
@@ -525,7 +525,10 @@
     "later": "Later",
     "failed": "Update failed: {{error}}. Lord of the Rows was not changed and keeps running.",
     "signed": "Updates are verified against the Lord of the Rows release signing key before install.",
-    "autoFound": "Lord of the Rows {{version}} is available. Open Settings → Updates to install."
+    "autoFound": "Lord of the Rows {{version}} is available.",
+    "view": "View",
+    "pill": "Update {{version}}",
+    "pillTitle": "Lord of the Rows {{version}} is available (you have {{current}}). Click to see what changed and install."
   },
   "ai": {
     "title": "AI assistant",

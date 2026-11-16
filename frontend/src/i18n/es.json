@@ -524,11 +524,11 @@
     "channel": "Canal de actualizaciones",
     "stable": "Estable",
     "beta": "Beta",
-    "autoCheck": "Buscar actualizaciones al iniciar",
-    "autoCheckHint": "Desactivado de forma predeterminada: Lord of the Rows no realiza solicitudes de red a menos que active esta opción o haga clic en Buscar ahora.",
+    "autoCheck": "Buscar actualizaciones automáticamente",
+    "autoCheckHint": "Busca una nueva versión en GitHub al iniciar y cada 6 horas. No se instala nada hasta que pulse Instalar.",
     "endpointStable": "URL del manifiesto estable",
     "endpointBeta": "URL del manifiesto beta",
-    "endpointHint": "URL HTTPS del manifiesto latest.json firmado para este canal.",
+    "endpointHint": "URL HTTPS del manifiesto latest.json firmado. Deje Estable vacío para usar las versiones oficiales.",
     "checkNow": "Buscar ahora",
     "checking": "Buscando…",
     "notConfigured": "Las actualizaciones no están configuradas para el canal {{channel}}. Introduzca arriba la URL de un manifiesto.",
@@ -544,7 +544,10 @@
     "later": "Más tarde",
     "failed": "La actualización falló: {{error}}. Lord of the Rows no se modificó y sigue funcionando.",
     "signed": "Las actualizaciones se verifican con la clave de firma de versiones de Lord of the Rows antes de instalarse.",
-    "autoFound": "Lord of the Rows {{version}} está disponible. Abra Ajustes → Actualizaciones para instalarlo."
+    "autoFound": "Lord of the Rows {{version}} está disponible.",
+    "view": "Ver",
+    "pill": "Actualizar a {{version}}",
+    "pillTitle": "Lord of the Rows {{version}} está disponible (tiene {{current}}). Haga clic para ver los cambios e instalar."
   },
   "ai": {
     "title": "Asistente de IA",
