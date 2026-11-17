@@ -144,7 +144,11 @@ impl DatabaseDriver for PgDriver {
         cfg.validate()?;
         let mut pc = tokio_postgres::Config::new();
         if let Some(sock) = &cfg.socket_path {
+            // Unix-domain sockets only exist on Unix (tokio-postgres has no host_path elsewhere).
+            #[cfg(unix)]
             pc.host_path(sock);
+            #[cfg(not(unix))]
+            return Err(DbError::invalid(format!("connecting through a socket file ({sock}) is not supported on this platform; use host and port")));
         } else if let Some(h) = &cfg.host {
             pc.host(h);
         }

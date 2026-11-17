@@ -29,6 +29,18 @@ It then runs `scripts/verify-update-sig.mjs`, which checks the signature against
 `scripts/publish-homebrew.sh` uploads the DMG and these three files to the GitHub release, so
 `releases/latest/download/latest.json` always describes the newest release.
 
+## Linux and Windows releases (what CI does)
+
+The `desktop` job of `release.yml` runs `scripts/release-desktop.sh` on native runners: Linux
+x86_64 and arm64 (Ubuntu 22.04: `.AppImage`, `.deb`, `.rpm`) and Windows x86_64 (NSIS
+`-setup.exe`, per-user install). Each file is signed with `--app-version` and checked with
+`verify-update-sig.mjs`, like the macOS bundle; the files themselves are the update artifacts.
+The script writes a manifest fragment per platform with the keys the updater looks up first,
+`linux-<arch>-appimage|deb|rpm` and `windows-x86_64-nsis` (plus `linux-<arch>` and
+`windows-x86_64` for older updaters). After the macOS job has published the release,
+`publish-desktop` uploads the installers and merges the fragments into the release's
+`latest.json`. The Windows installer is not Authenticode-signed yet (see BLOCKERS.md B3).
+
 ## Keys
 
 | File | Where | Committed? |
