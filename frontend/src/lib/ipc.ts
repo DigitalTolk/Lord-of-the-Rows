@@ -124,9 +124,9 @@ export const api = {
   runMigration: (sessionId: string, sql: string, confirmToken?: string | null, typedConfirmation?: string | null) =>
     call<{ results: T.StatementResult[]; duration_ms: number }>('run_migration', { sessionId, sql, confirmToken: confirmToken ?? null, typedConfirmation: typedConfirmation ?? null }),
 
-  listDbSessions: (sessionId: string) => call<T.SessionInfo[]>('list_db_sessions', { sessionId }),
-  killDbSession: (sessionId: string, targetId: string, confirmToken?: string | null) =>
-    call<{ ok?: boolean; confirm?: { token: string; message: string } }>('kill_db_session', { sessionId, targetId, confirmToken: confirmToken ?? null }),
+  listDbSessions: (sessionId: string) => call<T.ActivityRow[]>('list_db_sessions', { sessionId }),
+  killDbSession: (sessionId: string, targetId: string, mode: T.StopMode = 'connection', confirmToken?: string | null) =>
+    call<{ ok?: boolean; confirm?: { token: string; message: string } }>('kill_db_session', { sessionId, targetId, mode, confirmToken: confirmToken ?? null }),
 
   auditQuery: (filter: T.AuditFilter) => call<T.AuditEntry[]>('audit_query', { filter }),
   auditVerify: () => call<{ entries: number; ok: boolean; first_bad_seq?: number | null; head_hash: string }>('audit_verify'),

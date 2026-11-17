@@ -17,6 +17,9 @@ pub struct MySqlConnection {
     opts: Opts,
     conn_id: u32,
     engine: Engine,
+    /// Separate connection for Activity (process list, cancel, kill), opened on first use,
+    /// so it still works while `conn` is busy — e.g. running the very query to be killed.
+    side: Mutex<Option<Conn>>,
 }
 
 fn map_err(e: mysql_async::Error) -> DbError {
@@ -115,7 +118,7 @@ impl DatabaseDriver for MySqlDriver {
             r => r.map_err(map_err)?,
         };
         let conn_id = conn.id();
-        let me = MySqlConnection { conn: Mutex::new(conn), opts, conn_id, engine: cfg.engine };
+        let me = MySqlConnection { conn: Mutex::new(conn), opts, conn_id, engine: cfg.engine, side: Mutex::new(None) };
         if cfg.read_only {
             me.set_read_only(true).await?;
         }
@@ -231,23 +234,61 @@ impl MySqlConnection {
     async fn text_rows(&self, sql: &str, params: Vec<mysql_async::Value>) -> DbResult<Vec<Vec<Option<String>>>> {
         let mut c = self.conn.lock().await;
         let rows: Vec<mysql_async::Row> = c.exec(sql, mysql_async::Params::Positional(params)).await.map_err(map_err)?;
-        Ok(rows
-            .into_iter()
-            .map(|r| {
-                r.unwrap()
-                    .into_iter()
-                    .map(|v| match v {
-                        mysql_async::Value::NULL => None,
-                        mysql_async::Value::Bytes(b) => Some(String::from_utf8_lossy(&b).into_owned()),
-                        mysql_async::Value::Int(i) => Some(i.to_string()),
-                        mysql_async::Value::UInt(u) => Some(u.to_string()),
-                        other => Some(other.as_sql(true).trim_matches('\'').to_string()),
-                    })
-                    .collect()
-            })
-            .collect())
+        Ok(text_of(rows))
     }
 
+    /// Runs `sql` (text protocol) on the Activity side connection, opening it on first use
+    /// and once more if it was dropped. Returns the side connection's own id too, so it can
+    /// be left out of the process list.
+    async fn side_rows(&self, sql: &str) -> DbResult<(Vec<Vec<Option<String>>>, u32)> {
+        let mut g = self.side.lock().await;
+        for attempt in 0..2 {
+            if g.is_none() {
+                *g = Some(Conn::new(self.opts.clone()).await.map_err(map_err)?);
+            }
+            let c = g.as_mut().expect("side connection");
+            let id = c.id();
+            match c.query::<mysql_async::Row, _>(sql).await {
+                Ok(rows) => return Ok((text_of(rows), id)),
+                // A dropped connection (idle timeout, network) is reopened once.
+                Err(e @ (mysql_async::Error::Io(_) | mysql_async::Error::Driver(_))) if attempt == 0 => {
+                    let _ = e;
+                    *g = None;
+                }
+                Err(e) => return Err(map_err(e)),
+            }
+        }
+        Err(DbError::new(ErrorKind::Connection, "activity connection unavailable"))
+    }
+}
+
+/// Server and replication threads: killing them breaks replication or scheduled events.
+pub fn is_mysql_system_thread(user: Option<&str>, command: Option<&str>) -> bool {
+    matches!(user, Some("system user" | "event_scheduler"))
+        || matches!(
+            command,
+            Some("Daemon" | "Binlog Dump" | "Binlog Dump GTID" | "Slave_IO" | "Slave_SQL" | "Slave_worker" | "Register Slave" | "Register Replica")
+        )
+}
+
+fn text_of(rows: Vec<mysql_async::Row>) -> Vec<Vec<Option<String>>> {
+    rows.into_iter()
+        .map(|r| {
+            r.unwrap()
+                .into_iter()
+                .map(|v| match v {
+                    mysql_async::Value::NULL => None,
+                    mysql_async::Value::Bytes(b) => Some(String::from_utf8_lossy(&b).into_owned()),
+                    mysql_async::Value::Int(i) => Some(i.to_string()),
+                    mysql_async::Value::UInt(u) => Some(u.to_string()),
+                    other => Some(other.as_sql(true).trim_matches('\'').to_string()),
+                })
+                .collect()
+        })
+        .collect()
+}
+
+impl MySqlConnection {
     async fn current_db(&self, schema: Option<&str>) -> DbResult<String> {
         if let Some(s) = schema.filter(|s| !s.is_empty()) {
             return Ok(s.to_string());
@@ -735,46 +776,104 @@ impl DatabaseConnection for MySqlConnection {
     }
 
     async fn list_sessions(&self) -> DbResult<Vec<SessionInfo>> {
-        // MySQL 8.0.22+: performance_schema.processlist reads the thread list without the
-        // global mutex that information_schema.PROCESSLIST takes (deprecated there). MariaDB and
-        // older MySQL (or performance_schema off) fall back to information_schema.
-        let ps = self
-            .text_rows(
-                "SELECT ID, USER, DB, HOST, COMMAND, LEFT(INFO, 2000), TIME * 1000, STATE FROM performance_schema.processlist ORDER BY TIME DESC",
-                vec![],
-            )
-            .await;
-        let rows = match ps {
-            Ok(r) if !r.is_empty() => r,
-            _ => {
-                self.text_rows(
-                    "SELECT ID, USER, DB, HOST, COMMAND, LEFT(INFO, 2000), TIME * 1000, STATE FROM information_schema.PROCESSLIST ORDER BY TIME DESC",
-                    vec![],
-                )
-                .await?
+        // Runs on the side connection, so it works while this session is busy.
+        // performance_schema.processlist (MySQL 8.0.22+) avoids the global mutex that
+        // information_schema.PROCESSLIST takes; MariaDB / older MySQL fall back. InnoDB
+        // transaction data needs the PROCESS privilege: without it the list still loads.
+        const COLS: &str = "p.ID, p.USER, p.DB, p.HOST, p.COMMAND, LEFT(p.INFO, 2000), p.TIME * 1000, p.STATE";
+        const TRX: &str = "t.trx_id IS NOT NULL, t.trx_rows_modified, TIMESTAMPDIFF(MICROSECOND, t.trx_started, NOW()) DIV 1000";
+        let attempts = [
+            format!("SELECT {COLS}, {TRX} FROM performance_schema.processlist p LEFT JOIN information_schema.INNODB_TRX t ON t.trx_mysql_thread_id = p.ID"),
+            format!("SELECT {COLS}, {TRX} FROM information_schema.PROCESSLIST p LEFT JOIN information_schema.INNODB_TRX t ON t.trx_mysql_thread_id = p.ID"),
+            format!("SELECT {COLS}, NULL, NULL, NULL FROM information_schema.PROCESSLIST p"),
+        ];
+        let mut found: Option<(Vec<Vec<Option<String>>>, u32)> = None;
+        let mut last_err = None;
+        for q in &attempts {
+            match self.side_rows(q).await {
+                Ok((rows, id)) if !rows.is_empty() => {
+                    found = Some((rows, id));
+                    break;
+                }
+                Ok(r) => {
+                    found.get_or_insert(r);
+                }
+                Err(e) => last_err = Some(e),
             }
+        }
+        let (rows, side_id) = match (found, last_err) {
+            (Some(f), _) => f,
+            (None, Some(e)) => return Err(e),
+            (None, None) => (Vec::new(), 0),
         };
+        // Who waits for whose row lock: MySQL 8 (performance_schema), else 5.7 / MariaDB.
+        let waits = match self
+            .side_rows(
+                "SELECT r.PROCESSLIST_ID, b.PROCESSLIST_ID FROM performance_schema.data_lock_waits w
+                 JOIN performance_schema.threads r ON r.THREAD_ID = w.REQUESTING_THREAD_ID
+                 JOIN performance_schema.threads b ON b.THREAD_ID = w.BLOCKING_THREAD_ID",
+            )
+            .await
+        {
+            Ok((w, _)) => w,
+            Err(_) => self
+                .side_rows(
+                    "SELECT r.trx_mysql_thread_id, b.trx_mysql_thread_id FROM information_schema.INNODB_LOCK_WAITS w
+                     JOIN information_schema.INNODB_TRX r ON r.trx_id = w.requesting_trx_id
+                     JOIN information_schema.INNODB_TRX b ON b.trx_id = w.blocking_trx_id",
+                )
+                .await
+                .map(|x| x.0)
+                .unwrap_or_default(),
+        };
+        let mut blockers: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for w in waits {
+            if let (Some(a), Some(b)) = (w[0].clone(), w[1].clone()) {
+                let v = blockers.entry(a).or_default();
+                if !v.contains(&b) {
+                    v.push(b);
+                }
+            }
+        }
+        let side = side_id.to_string();
+        let own = self.conn_id.to_string();
         Ok(rows
             .into_iter()
-            .map(|r| SessionInfo {
-                id: r[0].clone().unwrap_or_default(),
-                user: r[1].clone(),
-                database: r[2].clone(),
-                client: r[3].clone(),
-                state: r[4].clone().map(|c| match &r[7] {
-                    Some(s) if !s.is_empty() => format!("{c} ({s})"),
-                    _ => c,
-                }),
-                query: r[5].clone(),
-                duration_ms: r[6].as_deref().and_then(|x| x.parse::<f64>().ok()).map(|x| x as i64),
-                blocked_by: None,
+            .filter(|r| r[0].as_deref() != Some(side.as_str()))
+            .map(|r| {
+                let id = r[0].clone().unwrap_or_default();
+                let rows_modified: Option<i64> = r[9].as_deref().and_then(|x| x.parse().ok());
+                SessionInfo {
+                    system: is_mysql_system_thread(r[1].as_deref(), r[4].as_deref()),
+                    own: id == own,
+                    blocked_by: blockers.get(&id).map(|v| v.join(",")),
+                    user: r[1].clone(),
+                    database: r[2].clone(),
+                    client: r[3].clone(),
+                    command: r[4].clone(),
+                    query: r[5].clone(),
+                    duration_ms: r[6].as_deref().and_then(|x| x.parse::<f64>().ok()).map(|x| x as i64),
+                    state: r[7].clone().filter(|s| !s.is_empty()),
+                    in_transaction: r[8].as_deref() == Some("1"),
+                    trx_writes: rows_modified.is_some_and(|n| n > 0),
+                    trx_rows_modified: rows_modified,
+                    trx_age_ms: r[10].as_deref().and_then(|x| x.parse().ok()),
+                    // The InnoDB join answers "1"/"0"; the plain fallback NULL.
+                    trx_info: r[8].is_some(),
+                    id,
+                }
             })
             .collect())
     }
 
     async fn kill_session(&self, id: &str) -> DbResult<()> {
         let n: u64 = id.parse().map_err(|_| DbError::invalid("invalid session id"))?;
-        self.conn.lock().await.query_drop(format!("KILL {n}")).await.map_err(map_err)
+        self.side_rows(&format!("KILL CONNECTION {n}")).await.map(|_| ())
+    }
+
+    async fn cancel_session_query(&self, id: &str) -> DbResult<()> {
+        let n: u64 = id.parse().map_err(|_| DbError::invalid("invalid session id"))?;
+        self.side_rows(&format!("KILL QUERY {n}")).await.map(|_| ())
     }
 
     async fn cancel_running(&self) -> DbResult<()> {

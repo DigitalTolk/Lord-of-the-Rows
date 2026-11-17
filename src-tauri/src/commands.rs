@@ -1514,24 +1514,75 @@ pub async fn run_migration(
 
 // ---------------------------------------------------------------- monitoring
 
-#[tauri::command]
-pub async fn list_db_sessions(st: State<'_, AppState>, session_id: String) -> R<Vec<SessionInfo>> {
-    st.session(&session_id)?.conn.list_sessions().await
+/// A process in Activity, with what stopping it would do.
+#[derive(serde::Serialize)]
+pub struct ActivityRow {
+    #[serde(flatten)]
+    pub info: SessionInfo,
+    pub stop: dbs_safety::StopAssessment,
 }
 
 #[tauri::command]
-pub async fn kill_db_session(st: State<'_, AppState>, session_id: String, target_id: String, confirm_token: Option<String>) -> R<serde_json::Value> {
+pub async fn list_db_sessions(st: State<'_, AppState>, session_id: String) -> R<Vec<ActivityRow>> {
+    let conn = st.session(&session_id)?.conn.clone();
+    let d = conn.dialect();
+    Ok(conn.list_sessions().await?.into_iter().map(|info| ActivityRow { stop: dbs_safety::assess_stop(&info, d), info }).collect())
+}
+
+/// How to stop another session: `query` (cancel the statement, keep the connection) or
+/// `connection` (end it; its open transaction is rolled back).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StopMode {
+    Query,
+    Connection,
+}
+
+#[tauri::command]
+pub async fn kill_db_session(
+    st: State<'_, AppState>,
+    session_id: String,
+    target_id: String,
+    mode: Option<StopMode>,
+    confirm_token: Option<String>,
+) -> R<serde_json::Value> {
     let s = st.session(&session_id)?;
     if st.policy_for(&s.config).read_only {
         return Err(DbError::new(ErrorKind::PolicyBlocked, "connection is read-only"));
     }
-    let text = format!("TERMINATE SESSION {target_id}");
+    let mode = mode.unwrap_or(StopMode::Connection);
+    let (verb, text) = match mode {
+        StopMode::Query => ("Cancel the query of", format!("CANCEL QUERY OF SESSION {target_id}")),
+        StopMode::Connection => ("Terminate", format!("TERMINATE SESSION {target_id}")),
+    };
     let cid = s.config.id.to_string();
     if !confirm_token.as_deref().is_some_and(|t| st.guard.verify(&cid, &text, t)) {
-        return Ok(serde_json::json!({ "confirm": { "token": st.guard.token(&cid, &text), "message": format!("Terminate session {target_id}?") } }));
+        return Ok(serde_json::json!({ "confirm": { "token": st.guard.token(&cid, &text), "message": format!("{verb} session {target_id}?") } }));
     }
-    let r = s.conn.kill_session(&target_id).await;
-    audit(&st, Category::SessionKilled, if r.is_ok() { Outcome::Success } else { Outcome::Failure }, Some(&s.config), |e| e.object = Some(target_id.clone()));
+    // Re-check the target right before acting: the list on screen may be seconds old.
+    let d = s.conn.dialect();
+    let current = s.conn.list_sessions().await?;
+    let target =
+        current.iter().find(|x| x.id == target_id).ok_or_else(|| DbError::new(ErrorKind::NotFound, format!("session {target_id} has already ended")))?;
+    let a = dbs_safety::assess_stop(target, d);
+    if target.system {
+        return Err(DbError::new(ErrorKind::PolicyBlocked, "this is a server or replication thread; stopping it from here is not allowed"));
+    }
+    if mode == StopMode::Connection && !a.can_kill {
+        return Err(DbError::new(ErrorKind::PolicyBlocked, "this is your own session; cancel its query instead"));
+    }
+    if mode == StopMode::Query && !a.can_cancel {
+        return Err(DbError::new(ErrorKind::NotFound, format!("session {target_id} is not running a query")));
+    }
+    let r = match mode {
+        StopMode::Query => s.conn.cancel_session_query(&target_id).await,
+        StopMode::Connection => s.conn.kill_session(&target_id).await,
+    };
+    let detail = format!("{} {target_id}: {:?}", if mode == StopMode::Query { "cancel query" } else { "kill connection" }, a.impact);
+    audit(&st, Category::SessionKilled, if r.is_ok() { Outcome::Success } else { Outcome::Failure }, Some(&s.config), |e| {
+        e.object = Some(target_id.clone());
+        e.detail = Some(detail);
+    });
     r.map(|_| serde_json::json!({ "ok": true }))
 }
 

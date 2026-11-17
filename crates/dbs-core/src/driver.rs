@@ -167,9 +167,17 @@ pub trait DatabaseConnection: Send + Sync {
         Err(DbError::unsupported("session monitoring"))
     }
 
+    /// Ends another session's connection (its open transaction is rolled back).
     async fn kill_session(&self, id: &str) -> DbResult<()> {
         let _ = id;
         Err(DbError::unsupported("session termination"))
+    }
+
+    /// Stops the statement another session is running, keeping its connection
+    /// (MySQL `KILL QUERY`, PostgreSQL `pg_cancel_backend`).
+    async fn cancel_session_query(&self, id: &str) -> DbResult<()> {
+        let _ = id;
+        Err(DbError::unsupported("cancelling another session's query"))
     }
 
     /// Cancel whatever this connection is currently running.

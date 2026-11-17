@@ -27,6 +27,35 @@ pub struct PgConnection {
     tls: Tls,
     notices: Arc<Mutex<Vec<String>>>,
     task: tokio::task::JoinHandle<()>,
+    /// Connection settings, to open the Activity side connection.
+    config: tokio_postgres::Config,
+    /// This session's backend pid (marked "You" in Activity).
+    pid: i32,
+    /// Separate connection for Activity (process list, cancel, terminate), opened on first
+    /// use, so it still works while `client` is busy running the very query to be stopped.
+    side: tokio::sync::Mutex<Option<(Client, tokio::task::JoinHandle<()>)>>,
+}
+
+/// Opens a client on `pc` and spawns its connection task (notices go to `notices`).
+async fn open_client(pc: &tokio_postgres::Config, tls: &Tls, notices: Arc<Mutex<Vec<String>>>) -> DbResult<(Client, tokio::task::JoinHandle<()>)> {
+    Ok(match tls {
+        Tls::None => {
+            let (client, mut conn) = pc.connect(NoTls).await.map_err(map_pg_err)?;
+            let task = tokio::spawn(async move {
+                let stream = futures_util::stream::poll_fn(move |cx| conn.poll_message(cx));
+                pump(stream, notices).await
+            });
+            (client, task)
+        }
+        Tls::Native(m) => {
+            let (client, mut conn) = pc.connect(m.clone()).await.map_err(map_pg_err)?;
+            let task = tokio::spawn(async move {
+                let stream = futures_util::stream::poll_fn(move |cx| conn.poll_message(cx));
+                pump(stream, notices).await
+            });
+            (client, task)
+        }
+    })
 }
 
 /// Build a native-tls connector honouring the connection's SSL mode:
@@ -152,27 +181,14 @@ impl DatabaseDriver for PgDriver {
             None => Tls::None,
             Some(c) => Tls::Native(MakeTlsConnector::new(c)),
         };
-        let n2 = notices.clone();
-        let (client, task) = match &tls {
-            Tls::None => {
-                let (client, mut conn) = pc.connect(NoTls).await.map_err(map_pg_err)?;
-                let task = tokio::spawn(async move {
-                    let stream = futures_util::stream::poll_fn(move |cx| conn.poll_message(cx));
-                    pump(stream, n2).await
-                });
-                (client, task)
-            }
-            Tls::Native(m) => {
-                let (client, mut conn) = pc.connect(m.clone()).await.map_err(map_pg_err)?;
-                let task = tokio::spawn(async move {
-                    let stream = futures_util::stream::poll_fn(move |cx| conn.poll_message(cx));
-                    pump(stream, n2).await
-                });
-                (client, task)
-            }
-        };
+        let (client, task) = open_client(&pc, &tls, notices.clone()).await?;
         let cancel = client.cancel_token();
-        let me = PgConnection { client, engine: cfg.engine, cancel, tls, notices, task };
+        // Own backend pid; poolers / some forks may not support it, which only loses the "You" mark.
+        let pid = match client.query_one("SELECT pg_backend_pid()", &[]).await {
+            Ok(r) => r.get::<_, i32>(0),
+            Err(_) => 0,
+        };
+        let me = PgConnection { client, engine: cfg.engine, cancel, tls, notices, task, config: pc, pid, side: tokio::sync::Mutex::new(None) };
         if cfg.read_only {
             me.set_read_only(true).await?;
         }
@@ -211,10 +227,36 @@ where
 impl Drop for PgConnection {
     fn drop(&mut self) {
         self.task.abort();
+        if let Ok(g) = self.side.try_lock() {
+            if let Some((_, t)) = g.as_ref() {
+                t.abort();
+            }
+        }
     }
 }
 
 impl PgConnection {
+    /// Runs `sql` with `params` on the Activity side connection, opening it on first use
+    /// and once more if it was closed.
+    async fn side_query(&self, sql: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> DbResult<Vec<tokio_postgres::Row>> {
+        let mut g = self.side.lock().await;
+        for attempt in 0..2 {
+            if g.as_ref().is_none_or(|(c, _)| c.is_closed()) {
+                *g = Some(open_client(&self.config, &self.tls, Arc::default()).await?);
+            }
+            let (c, _) = g.as_ref().expect("side connection");
+            match c.query(sql, params).await {
+                Ok(rows) => return Ok(rows),
+                Err(e) if attempt == 0 && c.is_closed() => {
+                    let _ = e;
+                    *g = None;
+                }
+                Err(e) => return Err(map_pg_err(e)),
+            }
+        }
+        Err(DbError::new(ErrorKind::Connection, "activity connection unavailable"))
+    }
+
     fn take_notices(&self) -> Vec<String> {
         std::mem::take(&mut *self.notices.lock().unwrap())
     }
@@ -864,37 +906,71 @@ impl DatabaseConnection for PgConnection {
     }
 
     async fn list_sessions(&self) -> DbResult<Vec<SessionInfo>> {
+        // Client sessions plus the background workers whose interruption matters
+        // (replication senders/workers, autovacuum); the side connection leaves itself out.
         let rows = self
-            .text_rows(
-                "SELECT pid::text, usename::text, datname::text, coalesce(application_name,'') || ' ' || coalesce(client_addr::text,''),
-                        state, left(query, 2000), (extract(epoch from (now() - query_start)) * 1000)::bigint::text,
-                        nullif(array_to_string(pg_blocking_pids(pid), ','), '')
-                 FROM pg_stat_activity WHERE backend_type = 'client backend' ORDER BY query_start NULLS LAST",
+            .side_query(
+                "SELECT pid::text, usename::text, datname::text,
+                        nullif(trim(coalesce(application_name,'') || ' ' || coalesce(client_addr::text,'')), ''),
+                        state, left(query, 2000),
+                        (extract(epoch from (now() - coalesce(query_start, backend_start))) * 1000)::bigint::text,
+                        nullif(array_to_string(pg_blocking_pids(pid), ','), ''),
+                        backend_type, (xact_start IS NOT NULL)::text, (backend_xid IS NOT NULL)::text,
+                        (extract(epoch from (now() - xact_start)) * 1000)::bigint::text
+                 FROM pg_stat_activity
+                 WHERE pid <> pg_backend_pid()
+                   AND backend_type IN ('client backend', 'walsender', 'autovacuum worker', 'logical replication worker', 'parallel worker')
+                 ORDER BY query_start NULLS LAST",
                 &[],
             )
             .await?;
+        let own = self.pid.to_string();
         Ok(rows
-            .into_iter()
-            .map(|r| SessionInfo {
-                id: r[0].clone().unwrap_or_default(),
-                user: r[1].clone(),
-                database: r[2].clone(),
-                client: r[3].clone(),
-                state: r[4].clone(),
-                query: r[5].clone(),
-                duration_ms: r[6].as_deref().and_then(|x| x.parse().ok()),
-                blocked_by: r[7].clone(),
+            .iter()
+            .map(|r| {
+                let g = |i: usize| r.get::<_, Option<String>>(i);
+                let id = g(0).unwrap_or_default();
+                let backend = g(8);
+                SessionInfo {
+                    own: id == own,
+                    system: backend.as_deref().is_some_and(|b| b != "client backend"),
+                    user: g(1),
+                    database: g(2),
+                    client: g(3),
+                    state: g(4),
+                    query: g(5).filter(|q| !q.is_empty()),
+                    duration_ms: g(6).and_then(|x| x.parse().ok()),
+                    blocked_by: g(7),
+                    command: backend,
+                    in_transaction: g(9).as_deref() == Some("true"),
+                    // A transaction id is assigned on the first write.
+                    trx_writes: g(10).as_deref() == Some("true"),
+                    trx_rows_modified: None,
+                    trx_age_ms: g(11).and_then(|x| x.parse().ok()),
+                    trx_info: true,
+                    id,
+                }
             })
             .collect())
     }
 
     async fn kill_session(&self, id: &str) -> DbResult<()> {
         let pid: i32 = id.parse().map_err(|_| DbError::invalid("invalid session id"))?;
-        let r = self.client.query_one("SELECT pg_terminate_backend($1)", &[&pid]).await.map_err(map_pg_err)?;
-        if r.get::<_, bool>(0) {
+        let r = self.side_query("SELECT pg_terminate_backend($1)", &[&pid]).await?;
+        if r.first().is_some_and(|r| r.get::<_, bool>(0)) {
             Ok(())
         } else {
             Err(DbError::new(ErrorKind::NotFound, "session not found or not terminated"))
+        }
+    }
+
+    async fn cancel_session_query(&self, id: &str) -> DbResult<()> {
+        let pid: i32 = id.parse().map_err(|_| DbError::invalid("invalid session id"))?;
+        let r = self.side_query("SELECT pg_cancel_backend($1)", &[&pid]).await?;
+        if r.first().is_some_and(|r| r.get::<_, bool>(0)) {
+            Ok(())
+        } else {
+            Err(DbError::new(ErrorKind::NotFound, "session not found or nothing to cancel"))
         }
     }
 
