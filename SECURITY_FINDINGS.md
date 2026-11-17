@@ -14,6 +14,7 @@ Self-assessment with automated tools; **not** an independent penetration test.
 | SF-008 | — | MITM on SSH | Mitigated | Strict host-key verification; changed keys refused even with approval (IT + E2E) |
 | SF-009 | — | MITM on DB TLS | Mitigated | verify-full default; untrusted certs rejected (IT); hostname kept through SSH tunnels |
 | SF-010 | — | Arbitrary file read/write from a compromised webview | Mitigated | Webview never sends paths: files only via backend-opened native dialogs returning opaque grants |
+| SF-011 | Info | `chrono` declared unmaintained (RUSTSEC-2026-0543); no known vulnerability. Used directly (audit timestamps, driver date/time values, import/export) and transitively by `russh` | Accepted (tracked) | Listed in `deny.toml`; plan: migrate own crates to `jiff` or `time`, revisit when `russh` drops it |
 
 Tool runs (latest): `cargo audit` 0 vulnerabilities · `cargo deny` advisories/licenses/sources ok ·
 `npm audit` 0 · gitleaks 0 leaks · semgrep (rust, typescript, react, secrets, owasp-top-ten) 0 findings ·
