@@ -220,7 +220,23 @@ export interface DbError { kind: string; message: string; code?: string | null; 
 export interface SessionInfo {
   id: string; user?: string | null; database?: string | null; client?: string | null; state?: string | null;
   query?: string | null; duration_ms?: number | null; blocked_by?: string | null;
+  command?: string | null; system?: boolean; own?: boolean; in_transaction?: boolean; trx_writes?: boolean;
+  trx_rows_modified?: number | null; trx_age_ms?: number | null; trx_info?: boolean;
 }
+
+/** What stopping a session would do (backend: dbs_safety::stop). */
+export type StopSeverity = 'safe' | 'caution' | 'danger' | 'blocked';
+export type StopImpact = 'nothing_to_undo' | 'idle' | 'open_transaction' | 'undo_write' | 'partial_write' | 'schema_change' | 'unknown' | 'backup' | 'system';
+export interface StopAssessment {
+  impact: StopImpact;
+  severity: StopSeverity;
+  kill_discards_transaction: boolean;
+  rows?: number | null;
+  can_cancel: boolean;
+  can_kill: boolean;
+}
+export interface ActivityRow extends SessionInfo { stop: StopAssessment }
+export type StopMode = 'query' | 'connection';
 
 export type AuditCategory = string;
 export interface AuditEntry {

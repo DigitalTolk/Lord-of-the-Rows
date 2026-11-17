@@ -410,7 +410,8 @@ describe('tools', () => {
   test('monitor lists live sessions', () =>
     fail('monitor', async () => {
       await clickSel(b, 'button[aria-label="Monitor"]');
-      await until(async () => /Sessions \(\d+\)/.test(await pageText(b)), 'sessions');
+      // The Activity list (running queries, idle connections collapsed into a chip).
+      await until(async () => /Running \(\d+\)|idle connection/.test(await pageText(b)), 'sessions');
       await waitText(b, 'Largest tables');
     }));
 

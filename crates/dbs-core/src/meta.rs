@@ -174,7 +174,8 @@ pub struct ApplyReport {
     pub committed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// One server process / backend, as shown in Activity.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub id: String,
     pub user: Option<String>,
@@ -183,5 +184,31 @@ pub struct SessionInfo {
     pub state: Option<String>,
     pub query: Option<String>,
     pub duration_ms: Option<i64>,
+    /// Comma-separated ids of the sessions this one waits on for a lock.
     pub blocked_by: Option<String>,
+    /// Server-side command / backend type (MySQL `Query`, `Sleep`, `Binlog Dump`…; PG `walsender`…).
+    #[serde(default)]
+    pub command: Option<String>,
+    /// A server or replication thread (event scheduler, replica, WAL sender, autovacuum…).
+    #[serde(default)]
+    pub system: bool,
+    /// This app's own session for the connection.
+    #[serde(default)]
+    pub own: bool,
+    /// Inside an open transaction.
+    #[serde(default)]
+    pub in_transaction: bool,
+    /// The open transaction has changed data (would be rolled back if the connection ends).
+    #[serde(default)]
+    pub trx_writes: bool,
+    /// Rows the open transaction has changed so far, where the server reports it (InnoDB).
+    #[serde(default)]
+    pub trx_rows_modified: Option<i64>,
+    /// How long the open transaction has been running.
+    #[serde(default)]
+    pub trx_age_ms: Option<i64>,
+    /// The server reported transaction details (needs e.g. MySQL's PROCESS privilege).
+    /// Without them a write cannot be told apart from a non-transactional one.
+    #[serde(default)]
+    pub trx_info: bool,
 }

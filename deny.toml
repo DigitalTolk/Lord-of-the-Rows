@@ -11,6 +11,7 @@ ignore = [
   { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained: Linux secret-service only" },
   { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained: Linux secret-service only" },
   { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained: Linux secret-service only" },
+  { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained (no known vulnerability); also pulled in by russh. Migration to jiff/time tracked as SF-011" },
 ]
 
 [licenses]

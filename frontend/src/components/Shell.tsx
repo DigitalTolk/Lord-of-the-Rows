@@ -18,6 +18,8 @@ import { DETAIL_SHORTCUT, setDetailPanel } from '../lib/detailPanel';
 import { openDatabasePicker } from './OpenDatabaseDialog';
 import { openImportDialog } from './ImportConnectionsDialog';
 import { accessCommands } from '../lib/accessStore';
+import { ActivityIndicator } from './Activity';
+import { useActivity } from '../lib/activityStore';
 
 const KIND_ICON: Record<TabKind, IconName> = { query: 'sql', table: 'table', structure: 'structure', diff: 'copy', audit: 'shield', monitor: 'pulse', er: 'diagram', settings: 'gear', import: 'download', backup: 'db', history: 'history', dashboard: 'chart' };
 
@@ -245,6 +247,7 @@ export function StatusBar() {
           <span className="truncate" dir="auto">{s.server.version.split(',')[0]}</span>
           {s.latency != null && <span>{t('status.latency', { ms: s.latency })}</span>}
           <span>{t('status.policy', { name: s.policy.name })}</span>
+          <ActivityIndicator />
         </>
       ) : (
         <span>{t('status.disconnected')}</span>
@@ -315,6 +318,7 @@ export function CommandPalette() {
       list.push(
         { id: 'open-db', label: t('openDb.paletteLabel'), hint: displayCombo(DEFAULT_KEYS.openDatabase), run: () => openDatabasePicker() },
         { id: 'er', label: `${t('er.title')} — ${s.config.name}`, run: tool('er', `ER ${s.activeSchema ?? ''}`) },
+        { id: 'activity', label: `${t('activity.title')} — ${s.config.name}`, hint: displayCombo(DEFAULT_KEYS.activity), run: () => useActivity.getState().setOpen(true) },
         { id: 'monitor', label: `${t('monitor.title')} — ${s.config.name}`, run: tool('monitor', t('monitor.title')) },
         { id: 'import', label: `${t('io.importTitle')} — ${s.config.name}`, run: tool('import', t('io.importTitle')) },
         { id: 'backup', label: `${t('backup.title')} — ${s.config.name}`, run: tool('backup', t('backup.title')) },

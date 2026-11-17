@@ -28,6 +28,8 @@ import { ERView } from './views/ERView';
 import { HistoryView } from './views/HistoryView';
 import { ImportView } from './views/ImportView';
 import { MonitorView } from './views/MonitorView';
+import { ActivityPanel, ActivityPoller } from './components/Activity';
+import { useActivity } from './lib/activityStore';
 import { QuerySplitView } from './views/QuerySplitView';
 import { SettingsView } from './views/SettingsView';
 import { StructureView } from './views/StructureView';
@@ -167,6 +169,7 @@ export default function App() {
       else if (is('closeWindow')) void st.closeWindow();
       else if (is('splitEditor') && (tabs[cur] ?? tabs[0])?.kind === 'query') st.toggleSplit((tabs[cur] ?? tabs[0]).id);
       else if (is('focusMode')) void st.setSetting('workspace.focus', !st.settings['workspace.focus']);
+      else if (is('activity')) useActivity.getState().toggle();
       else handled = false;
       if (handled) {
         e.preventDefault();
@@ -274,6 +277,8 @@ export default function App() {
         </>
       )}
       <StatusBar />
+      <ActivityPoller />
+      <ActivityPanel />
       {st.connectionDialog && <ConnectionDialog key={JSON.stringify(st.connectionDialog)} />}
       {st.paletteOpen && <CommandPalette />}
       <OpenDatabaseHost />

@@ -18,9 +18,11 @@ pub mod filter_expr;
 pub mod lexer;
 pub mod policy;
 pub mod redis;
+pub mod stop;
 
 pub use classify::*;
 pub use filter_expr::*;
 pub use lexer::*;
 pub use policy::*;
 pub use redis::{classify_redis, classify_redis_script, quote_arg, tokenize_command};
+pub use stop::{assess_stop, StopAssessment, StopImpact, StopSeverity};

@@ -16,6 +16,7 @@ export const DEFAULT_KEYS = {
   closeWindow: 'Mod+Shift+W',
   splitEditor: 'Mod+\\',
   focusMode: 'Mod+Shift+F',
+  activity: 'Mod+Shift+A',
 } as const;
 export type KeyAction = keyof typeof DEFAULT_KEYS;
 
