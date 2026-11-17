@@ -4,6 +4,8 @@
 #   scripts/release-macos.sh          # builds ~/Downloads/LordOfTheRows-<version>-universal.dmg (notarized)
 #   scripts/publish-homebrew.sh       # GitHub release v<version> + asks the tap to open its cask-update PR
 #
+# The Linux build is added to the same release by scripts/publish-linux.sh.
+#
 # The cask lives in DigitalTolk/homebrew-tools (Casks/lord-of-the-rows.rb). Its
 # "Update lord-of-the-rows cask" workflow checks the latest release every 6 h; this
 # script just triggers it right away. Merge the PR it opens to ship the update.
@@ -44,6 +46,15 @@ or download the DMG below.
 
 SHA-256: \`$SHA\`"
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+  # Keep the platforms publish-linux.sh already added to the release's latest.json.
+  # A failed download or merge stops here rather than dropping the Linux entries.
+  if [ -f "$DIR/latest.json" ] && gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[].name' | grep -qx latest.json; then
+    TMP="$(mktemp -d)"
+    gh release download "$TAG" --repo "$REPO" --pattern latest.json --dir "$TMP"
+    node scripts/merge-manifest.mjs "$TMP/latest.json" "$DIR/latest.json"
+    cp "$TMP/latest.json" "$DIR/latest.json"
+    rm -rf "$TMP"
+  fi
   gh release upload "$TAG" "${ASSETS[@]}" --repo "$REPO" --clobber
 else
   gh release create "$TAG" "${ASSETS[@]}" --repo "$REPO" --target "$(git rev-parse HEAD)" --title "Lord of the Rows $VERSION" --notes "$NOTES"

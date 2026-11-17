@@ -6,6 +6,17 @@ docker compose build dev
 docker compose run --rm dev sh -c 'cd frontend && npm ci && npx vite build && cd .. && cargo build -p dbstudio --release --features custom-protocol'
 ```
 
+## Linux packages (AppImage, .deb, .rpm)
+Natively on Linux x86_64 with Rust stable, Node 22 and the Tauri system packages (Debian/Ubuntu:
+`libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libdbus-1-dev libxdo-dev pkg-config file libfuse2`;
+Fedora: `webkit2gtk4.1-devel gtk3-devel libappindicator-gtk3-devel librsvg2-devel openssl-devel dbus-devel libxdo-devel fuse-libs`):
+```sh
+OUT_DIR=dist scripts/release-linux.sh
+```
+Output: `dist/LordOfTheRows-<version>-{x86_64.AppImage,amd64.deb,x86_64.rpm}` (plus `.sig` files and
+`latest-linux.json` when `TAURI_SIGNING_PRIVATE_KEY` is set). The binaries need the build host's glibc
+or newer, so release builds run on Ubuntu 22.04.
+
 ## macOS (native, unsigned)
 Requires Xcode Command Line Tools, Rust (`brew install rustup && rustup default stable && rustup target add x86_64-apple-darwin aarch64-apple-darwin`) and Node (`brew install node`).
 ```sh
@@ -26,4 +37,5 @@ needs an Apple Developer ID (see RELEASE notes in BLOCKERS.md).
 
 ## CI
 `.github/workflows/ci.yml`: fmt, clippy, Rust tests with DB services, frontend checks, full E2E in Docker, security
-scans + SBOM, unsigned universal macOS DMG artifact.
+scans + SBOM, unsigned universal macOS DMG artifact, Linux AppImage / .deb / .rpm artifact.
+`.github/workflows/release.yml`: signed + notarized macOS release and the Linux packages, on a `v*` tag.

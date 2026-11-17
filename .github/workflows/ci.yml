@@ -102,3 +102,25 @@ jobs:
         with:
           name: dbstudio-macos-universal-unsigned
           path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+
+  linux-bundles:
+    # Unsigned-for-update AppImage / .deb / .rpm, built where releases are built (glibc 2.35).
+    needs: [rust, frontend]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: System deps (Tauri / WebKitGTK, AppImage tooling)
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libdbus-1-dev libxdo-dev pkg-config file libfuse2
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with: { toolchain: stable }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      # No TAURI_SIGNING_PRIVATE_KEY here, so release-linux.sh skips the update signatures.
+      - run: scripts/release-linux.sh
+        env: { OUT_DIR: "${{ github.workspace }}/dist" }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lord-of-the-rows-linux-x86_64-unsigned
+          path: dist/LordOfTheRows-*

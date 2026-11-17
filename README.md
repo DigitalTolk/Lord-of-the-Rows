@@ -6,7 +6,8 @@ from scratch with Tauri 2 (Rust backend) and React/TypeScript. All code, design 
 ![Lord of the Rows: a customers table with a filter, the row detail panel and the object sidebar](docs/screenshots/table-workspace.png)
 
 **Status:** macOS builds are signed with DigitalTolk's Developer ID and notarized by Apple
-(universal: Apple Silicon + Intel; `scripts/release-macos.sh`). Tested end to end on Linux in Docker
+(universal: Apple Silicon + Intel; `scripts/release-macos.sh`). Linux x86_64 builds ship as AppImage, .deb
+and .rpm (`scripts/release-linux.sh`). Tested end to end on Linux in Docker
 against real PostgreSQL, MySQL, MariaDB, Redis, DynamoDB Local and an SSH bastion. Windows builds
 are not done yet; see [FEATURE_MATRIX.md](FEATURE_MATRIX.md), [BLOCKERS.md](BLOCKERS.md).
 
@@ -24,6 +25,21 @@ Update with `brew update && brew upgrade --cask DigitalTolk/tools/lord-of-the-ro
 No admin rights on your Mac? Install into your own Applications folder:
 `brew install --cask --appdir=~/Applications DigitalTolk/tools/lord-of-the-rows`
 (or set `export HOMEBREW_CASK_OPTS="--appdir=~/Applications"` in `~/.zshrc` once).
+
+## Install (Linux)
+
+Download from [Releases](https://github.com/DigitalTolk/Lord-of-the-Rows/releases) (x86_64; glibc 2.35+,
+i.e. Ubuntu 22.04, Debian 12, Fedora 36 or newer):
+
+| Package | Install | Updates |
+|---|---|---|
+| AppImage (any distro) | `chmod +x LordOfTheRows-<version>-x86_64.AppImage` and run it | in the app; the AppImage replaces itself |
+| .deb (Debian, Ubuntu, Mint) | `sudo apt install ./LordOfTheRows-<version>-amd64.deb` | in the app (asks for your password via pkexec) |
+| .rpm (Fedora, RHEL, openSUSE) | `sudo dnf install ./LordOfTheRows-<version>-x86_64.rpm` | in the app (asks for your password via pkexec) |
+
+Saved passwords are kept in the Secret Service (GNOME Keyring, KWallet or KeePassXC); without one running,
+connections work but passwords can't be saved. The `.deb`/`.rpm` pull in WebKitGTK 4.1 and GTK 3 from
+the distro; the AppImage bundles them.
 
 ## What works today
 

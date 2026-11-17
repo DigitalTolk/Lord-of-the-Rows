@@ -29,6 +29,33 @@ It then runs `scripts/verify-update-sig.mjs`, which checks the signature against
 `scripts/publish-homebrew.sh` uploads the DMG and these three files to the GitHub release, so
 `releases/latest/download/latest.json` always describes the newest release.
 
+## Linux releases (what CI does)
+
+`scripts/release-linux.sh` (the `linux` job of the same workflow, on Ubuntu 22.04 so the binaries
+need no newer glibc than 2.35) builds the AppImage, `.deb` and `.rpm` for x86_64 and, with the
+signing key, signs each with `--app-version`, checks it with `scripts/verify-update-sig.mjs`, and
+writes `latest-linux.json` with four platform entries:
+
+| Manifest key | File | Used by |
+|---|---|---|
+| `linux-x86_64-appimage`, `linux-x86_64` | `LordOfTheRows-<version>-x86_64.AppImage` | AppImage (replaces itself) |
+| `linux-x86_64-deb` | `LordOfTheRows-<version>-amd64.deb` | apps installed from the .deb (`dpkg -i` via pkexec) |
+| `linux-x86_64-rpm` | `LordOfTheRows-<version>-x86_64.rpm` | apps installed from the .rpm (`rpm -U` via pkexec) |
+
+After the macOS job has published the release, the `linux-publish` job runs
+`scripts/publish-linux.sh`: it uploads the packages and signatures, adds a Linux section to the
+release notes, and merges the Linux platforms into the release's `latest.json`
+(`scripts/merge-manifest.mjs`). `publish-homebrew.sh` merges the same way when it is re-run, so
+neither platform drops the other's entries; both stop rather than upload a manifest they could not
+merge. `publish-linux.sh` never creates the release: if the macOS job failed before publishing,
+the Linux publish fails too, and you re-run the workflow once it's fixed. If the macOS job failed
+*after* publishing, the Linux publish still runs; don't re-run the macOS job then (a rebuilt DMG
+would no longer match the Homebrew cask's sha256). Between the two publishes (a few minutes),
+Linux installs see the new version without a Linux entry and report "no update for this
+platform" until the next check.
+
+Locally: `scripts/release-linux.sh && scripts/publish-linux.sh` (after the macOS release).
+
 ## Keys
 
 | File | Where | Committed? |
