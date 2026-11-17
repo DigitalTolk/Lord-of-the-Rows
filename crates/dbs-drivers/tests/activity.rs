@@ -121,12 +121,16 @@ async fn mysql_family_activity(engine: Engine, host: &str) {
 
     // The app's own session is busy for a while.
     let busy = app.clone();
-    let own_task = tokio::spawn(async move { busy.execute("SELECT SLEEP(4)", &ExecOptions::default(), CancellationToken::new()).await });
+    let own_task = tokio::spawn(async move { busy.execute("SELECT SLEEP(8)", &ExecOptions::default(), CancellationToken::new()).await });
     tokio::time::sleep(Duration::from_millis(1200)).await;
 
     let t0 = Instant::now();
     let list = app.list_sessions().await.unwrap();
-    assert!(t0.elapsed() < Duration::from_secs(2), "Activity must not wait for the busy session ({:?})", t0.elapsed());
+    // The listing must come back while the app's own query is still running (it reads the
+    // server on its side connection). Timed against a long busy query rather than a tight
+    // budget: CI shares a few cores with the other engines' heavy test queries.
+    assert!(!own_task.is_finished(), "Activity waited for the busy session ({:?})", t0.elapsed());
+    assert!(t0.elapsed() < Duration::from_secs(5), "Activity listing took {:?}", t0.elapsed());
 
     let sb = find(&list, &b_id);
     assert!(sb.in_transaction && sb.trx_writes, "{sb:?}");
@@ -210,12 +214,16 @@ async fn postgres_activity() {
     let d_task = tokio::spawn(async move { d.execute("SELECT pg_sleep(30)", &[]).await.map(|_| ()) });
 
     let busy = app.clone();
-    let own_task = tokio::spawn(async move { busy.execute("SELECT pg_sleep(4)", &ExecOptions::default(), CancellationToken::new()).await });
+    let own_task = tokio::spawn(async move { busy.execute("SELECT pg_sleep(8)", &ExecOptions::default(), CancellationToken::new()).await });
     tokio::time::sleep(Duration::from_millis(1200)).await;
 
     let t0 = Instant::now();
     let list = app.list_sessions().await.unwrap();
-    assert!(t0.elapsed() < Duration::from_secs(2), "Activity must not wait for the busy session ({:?})", t0.elapsed());
+    // The listing must come back while the app's own query is still running (it reads the
+    // server on its side connection). Timed against a long busy query rather than a tight
+    // budget: CI shares a few cores with the other engines' heavy test queries.
+    assert!(!own_task.is_finished(), "Activity waited for the busy session ({:?})", t0.elapsed());
+    assert!(t0.elapsed() < Duration::from_secs(5), "Activity listing took {:?}", t0.elapsed());
 
     let sb = find(&list, &b_id);
     assert_eq!(sb.state.as_deref(), Some("idle in transaction"));
@@ -232,7 +240,7 @@ async fn postgres_activity() {
 
     let own: Vec<_> = list.iter().filter(|s| s.own).collect();
     assert_eq!(own.len(), 1, "exactly one own session: {list:#?}");
-    assert!(own[0].query.as_deref().unwrap_or("").contains("pg_sleep(4)"));
+    assert!(own[0].query.as_deref().unwrap_or("").contains("pg_sleep(8)"));
 
     // Cancel D: pg_sleep is interrupted with "canceling statement due to user request".
     app.cancel_session_query(&d_id).await.unwrap();
