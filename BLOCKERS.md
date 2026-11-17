@@ -2,7 +2,7 @@
 
 | # | Blocker | Impact | What is needed |
 |---|---|---|---|
-| B1 | Development host has no Rust/Node; all builds run in a Linux Docker container (by choice) | Only Linux builds are produced and tested | A macOS machine/runner with Rust + Node for macOS builds; a Windows runner for Windows builds |
+| B1 | Development host has no Rust/Node; all builds run in a Linux Docker container (by choice) | Release builds for macOS, Linux and Windows come from GitHub Actions runners (`release.yml`); only Linux is tested end to end | Windows and macOS end-to-end runs on native runners |
 | B2 | No Apple Developer ID / notarization credentials | Cannot sign, notarize or staple macOS builds | Apple Developer account, Developer ID Application certificate, app-specific password or API key |
 | B3 | No Windows code-signing certificate | Cannot produce signed MSI/MSIX | EV or OV code-signing certificate (or Azure Trusted Signing) |
 | B4 | No accounts for licensed/cloud engines (Oracle, SQL Server licensing, Snowflake, BigQuery, DynamoDB, D1) | Those drivers cannot be verified | Test accounts / containers (SQL Server and Oracle Free have dev containers; cloud services need credentials) |

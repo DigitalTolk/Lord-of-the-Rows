@@ -7,10 +7,13 @@ from scratch with Tauri 2 (Rust backend) and React/TypeScript. All code, design 
 
 **Status:** macOS builds are signed with DigitalTolk's Developer ID and notarized by Apple
 (universal: Apple Silicon + Intel; `scripts/release-macos.sh`). Tested end to end on Linux in Docker
-against real PostgreSQL, MySQL, MariaDB, Redis, DynamoDB Local and an SSH bastion. Windows builds
-are not done yet; see [FEATURE_MATRIX.md](FEATURE_MATRIX.md), [BLOCKERS.md](BLOCKERS.md).
+against real PostgreSQL, MySQL, MariaDB, Redis, DynamoDB Local and an SSH bastion. Linux (x86_64, arm64)
+and Windows (x86_64) builds are published with every release (`scripts/release-desktop.sh`); the
+Windows installer is not code-signed yet. See [FEATURE_MATRIX.md](FEATURE_MATRIX.md), [BLOCKERS.md](BLOCKERS.md).
 
-## Install (macOS)
+## Install
+
+### macOS
 
 ```
 brew trust DigitalTolk/tools
@@ -24,6 +27,35 @@ Update with `brew update && brew upgrade --cask DigitalTolk/tools/lord-of-the-ro
 No admin rights on your Mac? Install into your own Applications folder:
 `brew install --cask --appdir=~/Applications DigitalTolk/tools/lord-of-the-rows`
 (or set `export HOMEBREW_CASK_OPTS="--appdir=~/Applications"` in `~/.zshrc` once).
+
+### Linux
+
+Download from [Releases](https://github.com/DigitalTolk/Lord-of-the-Rows/releases) (x86_64 and arm64;
+glibc 2.35+, e.g. Ubuntu 22.04+, Debian 12+, Fedora 36+):
+
+- **Debian / Ubuntu:** `sudo apt install ./LordOfTheRows-<version>-linux-amd64.deb` (`arm64` on ARM)
+- **Fedora / RHEL / openSUSE:** `sudo dnf install ./LordOfTheRows-<version>-linux-x86_64.rpm`
+- **Any distribution, no root:** `chmod +x LordOfTheRows-<version>-linux-x86_64.AppImage` and run it.
+  If it complains about FUSE, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04) or run it with
+  `--appimage-extract-and-run`.
+
+Saved passwords go to the desktop keyring through the Secret Service API (GNOME Keyring or
+KWallet), which most desktops run already. `lordoftherows://` links work with the `.deb` and `.rpm`
+packages; the AppImage registers them when it starts.
+
+### Windows
+
+Download `LordOfTheRows-<version>-windows-x86_64-setup.exe` from
+[Releases](https://github.com/DigitalTolk/Lord-of-the-Rows/releases) and run it. It installs for your
+user only, so no admin rights are needed (Windows 10 and 11; WebView2 is installed if missing).
+The installer is not code-signed yet, so Windows SmartScreen shows "Windows protected your PC" the
+first time: click **More info**, then **Run anyway**. Saved passwords go to Windows Credential Manager.
+
+### Updates
+
+The app checks for a new release on launch and every 6 hours and shows **Update <version>** in the
+header. Updates are signature-checked before they install, on every platform and install type
+(Homebrew, DMG, AppImage, `.deb`, `.rpm`, Windows installer). Turn checking off in Settings → Updates.
 
 ## What works today
 
