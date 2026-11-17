@@ -45,9 +45,23 @@ describe('activity', () => {
           }),
         'set sql',
       );
+      // Restored tabs from earlier test files can still be settling, so click Run in the visible tab
+      // and wait for the status bar to count the query as running (re-clicking only if it never started).
+      const runVisible = () =>
+        b.execute(() => {
+          const panel = document.querySelector('[role=tabpanel]:not([hidden])');
+          const btn = [...(panel?.querySelectorAll('button') ?? [])].find((x) => x.innerText.trim() === 'Run all' && !x.disabled);
+          btn?.click();
+          return !!btn;
+        });
+      const statusRunning = async () => /\d+ running/.test(await b.execute(() => document.querySelector('footer')?.innerText ?? document.body.innerText));
       const t0 = Date.now();
-      await clickText(b, 'Run all', { exact: true });
-      await sleep(1500);
+      await until(async () => {
+        if (await statusRunning()) return true;
+        await runVisible();
+        await sleep(1500);
+        return statusRunning();
+      }, 'query running', 20000);
 
       await b.keys(['Control', 'Shift', 'a']);
       await until(async () => (await panel()).includes('SLEEP(60)'), 'query listed in Activity', 20000);
