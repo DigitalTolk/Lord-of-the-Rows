@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+- Linux and Windows builds. Every release now ships for Linux (x86_64 and arm64: AppImage, `.deb`, `.rpm`) and Windows (x86_64 installer, installs for your user only, no admin rights needed) next to macOS, and in-app updates work on all of them. The Windows installer is not code-signed yet: on first run choose **More info → Run anyway**. See the README for installation.
+- Fix: a PostgreSQL connection set up with a socket file now explains that sockets aren't available on Windows instead of failing to build there.
+
 ## 0.2.2
 - Activity: see what is running on the server right now, and stop it safely. Open it from the status bar (it shows how many queries are running and turns amber/red when one is slow or blocking) or with ⇧⌘A; it also replaces the session list in Monitor. Sessions that block others come first as a lock chain (who holds the lock, who waits and for how long), then running queries with a duration bar, with idle connections and server threads folded away. Search and filter by user, database or client; live updates pause while you hover or select so rows don't move under the pointer.
 - Every session says what stopping it would do, worked out from the query and its open transaction: "No changes to undo", "Rolls back 120,000 changed rows", "Schema change — may leave things half done", "Server thread — can't be stopped", and so on, colour-coded from safe to danger. **Cancel query** stops just the statement and keeps the connection; **Kill connection** ends it and rolls back its transaction. The confirmation spells out what will be lost; dangerous stops and any kill on production need the connection name typed. Several sessions can be cancelled or killed together. Server threads, replication and the app's own connection can't be stopped, and read-only connections show the actions disabled with the reason. Every stop is re-checked against the live server first and written to the audit log.
