@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.4
+- Connection rail menus (right-click): on a connection, New query, Open database…, Refresh, **Move to new window** (its query and table tabs and the current database go with it), **Open in new window**, Edit connection, **Close connection** and **Close other connections**; on an opened database, Open, New query, Refresh, Copy name, Close and **Close other databases**.
+
 ## 0.2.3
 - Linux and Windows builds. Every release now ships for Linux (x86_64 and arm64: AppImage, `.deb`, `.rpm`) and Windows (x86_64 installer, installs for your user only, no admin rights needed) next to macOS, and in-app updates work on all of them. The Windows installer is not code-signed yet: on first run choose **More info → Run anyway**. See the README for installation.
 - Fix: a PostgreSQL connection set up with a socket file now explains that sockets aren't available on Windows instead of failing to build there.
