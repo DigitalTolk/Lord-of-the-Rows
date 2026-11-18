@@ -14,6 +14,8 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use dbs_core::DbError;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::state::AppState;
@@ -66,15 +68,56 @@ pub fn open_new_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<String> 
     Ok(label)
 }
 
-/// Opens another app window (empty workspace, no sessions). Async so the window
-/// is not created on the main thread while it is blocked (deadlocks on Windows).
+/// What a new window should start with ("Move to new window" / "Open in new window": which saved
+/// connection to open, its database, and its query tabs). Kept here until that window asks for it
+/// once with `take_window_handoff`; never persisted.
+static HANDOFFS: LazyLock<Mutex<HashMap<String, serde_json::Value>>> = LazyLock::new(Default::default);
+/// Query text is capped per tab by the frontend; this bounds the whole hand-off.
+const MAX_HANDOFF_BYTES: usize = 4 * 1024 * 1024;
+
+fn check_handoff(v: &serde_json::Value) -> Result<(), DbError> {
+    if !v.is_object() {
+        return Err(DbError::invalid("window hand-off must be an object"));
+    }
+    if serde_json::to_vec(v).map(|b| b.len()).unwrap_or(usize::MAX) > MAX_HANDOFF_BYTES {
+        return Err(DbError::invalid("window hand-off is too large"));
+    }
+    Ok(())
+}
+
+/// Opens another app window. Without `handoff` it starts with an empty workspace and no sessions;
+/// with one, the new window opens that connection and its tabs on start. Async so the window is
+/// not created on the main thread while it is blocked (deadlocks on Windows).
 #[tauri::command]
-pub async fn open_window(app: AppHandle) -> Result<String, DbError> {
-    open_new_window(&app).map_err(|e| DbError::internal(e.to_string()))
+pub async fn open_window(app: AppHandle, handoff: Option<serde_json::Value>) -> Result<String, DbError> {
+    if let Some(h) = &handoff {
+        check_handoff(h)?;
+    }
+    let label = next_label(&app);
+    if let Some(h) = handoff {
+        HANDOFFS.lock().unwrap().insert(label.clone(), h);
+    }
+    match build_window(&app, &label) {
+        Ok(w) => {
+            let _ = w.set_focus();
+            Ok(label)
+        }
+        Err(e) => {
+            HANDOFFS.lock().unwrap().remove(&label);
+            Err(DbError::internal(e.to_string()))
+        }
+    }
+}
+
+/// The hand-off for the calling window, once (later calls return nothing).
+#[tauri::command]
+pub fn take_window_handoff(window: tauri::Window) -> Option<serde_json::Value> {
+    HANDOFFS.lock().unwrap().remove(window.label())
 }
 
 /// Disconnects every session owned by a window that has been destroyed.
 pub fn on_window_destroyed<R: Runtime>(window: &tauri::Window<R>) {
+    HANDOFFS.lock().unwrap().remove(window.label());
     let Some(st) = window.try_state::<AppState>() else { return };
     let sessions = st.take_window_sessions(window.label());
     if sessions.is_empty() {
@@ -109,6 +152,14 @@ pub fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Me
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn handoff_must_be_a_bounded_object() {
+        assert!(check_handoff(&serde_json::json!({ "connectionId": "c1", "tabs": [] })).is_ok());
+        assert!(check_handoff(&serde_json::json!(["not", "an", "object"])).is_err());
+        let big = "x".repeat(MAX_HANDOFF_BYTES);
+        assert!(check_handoff(&serde_json::json!({ "tabs": [{ "sql": big }] })).is_err());
+    }
     use super::*;
 
     #[test]

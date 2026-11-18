@@ -49,3 +49,42 @@ describe('ConnectionRail', () => {
   });
 });
 
+
+describe('ConnectionRail menus', () => {
+  const second = { ...session, session_id: 's2', config: { ...session.config, id: 'c2', name: 'Orders' } } as unknown as OpenSession;
+  const items = () => screen.getAllByRole('menuitem').map((m) => m.textContent);
+
+  it('a connection offers new tab, open database, refresh, new window, edit and close', async () => {
+    const openSessionInNewWindow = vi.fn(async () => {});
+    const closeOtherSessions = vi.fn(async () => {});
+    useOpenedSchemas.setState({ bySession: {} });
+    useApp.setState({ sessions: { s1: session, s2: second }, activeSession: 's1', tabs: [], openSessionInNewWindow, closeOtherSessions } as never);
+    render(<ConnectionRail />);
+    fireEvent.contextMenu(screen.getByText('Local MySQL').closest('button')!);
+    expect(items()).toEqual(['New query', 'Open database…', 'Refresh', 'Move to new window', 'Open in new window', 'Edit connection', 'Close connection', 'Close other connections']);
+    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Move to new window' })));
+    expect(openSessionInNewWindow).toHaveBeenCalledWith('s1', true);
+    fireEvent.contextMenu(screen.getByText('Local MySQL').closest('button')!);
+    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Close other connections' })));
+    expect(closeOtherSessions).toHaveBeenCalledWith('s1');
+  });
+
+  it('"Close other connections" is disabled with a single connection', () => {
+    useApp.setState({ sessions: { s1: session }, activeSession: 's1', tabs: [] });
+    render(<ConnectionRail />);
+    fireEvent.contextMenu(screen.getByText('Local MySQL').closest('button')!);
+    expect(screen.getByRole('menuitem', { name: 'Close other connections' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('an opened database can be opened, refreshed, copied, closed, or keep only itself', async () => {
+    useOpenedSchemas.setState({ bySession: { s1: ['billing_archive', 'inventory', 'reporting'] } });
+    useApp.setState({ sessions: { s1: session }, activeSession: 's1', tabs: [] });
+    render(<ConnectionRail />);
+    const list = screen.getByRole('listbox', { name: 'Databases' });
+    const reporting = [...list.querySelectorAll('[role=option]')].find((o) => o.textContent === 'reporting')!;
+    fireEvent.contextMenu(reporting);
+    expect(items()).toEqual(['Open', 'New query', 'Refresh', 'Copy name', 'Close', 'Close other databases']);
+    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Close other databases' })));
+    expect(useOpenedSchemas.getState().bySession.s1).toEqual(['reporting']);
+  });
+});

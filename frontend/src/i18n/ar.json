@@ -796,7 +796,13 @@
   },
   "rail": {
     "label": "الاتصالات المفتوحة",
-    "active": " (نشط)"
+    "active": " (نشط)",
+    "moveToNewWindow": "نقل إلى نافذة جديدة",
+    "openInNewWindow": "فتح في نافذة جديدة",
+    "closeConnection": "إغلاق الاتصال",
+    "closeOtherConnections": "إغلاق الاتصالات الأخرى",
+    "openDatabase": "فتح",
+    "closeOtherDatabases": "إغلاق قواعد البيانات الأخرى"
   },
   "welcome": {
     "version": "الإصدار {{version}}",

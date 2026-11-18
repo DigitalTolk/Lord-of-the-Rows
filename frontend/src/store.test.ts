@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const ipc = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
   label: 'main',
-  openWindow: vi.fn(async () => 'window-1'),
+  openWindow: vi.fn<(handoff?: unknown) => Promise<string>>(async () => 'window-1'),
+  handoff: null as unknown,
+  closeSession: vi.fn<(id: string) => Promise<undefined>>(async () => undefined),
 }));
 vi.mock('./lib/ipc', () => ({
   api: {
@@ -12,6 +14,12 @@ vi.mock('./lib/ipc', () => ({
     getSettings: async () => ipc.settings,
     listConnections: async () => [],
     openWindow: ipc.openWindow,
+    takeWindowHandoff: async () => {
+      const h = ipc.handoff;
+      ipc.handoff = null;
+      return h;
+    },
+    closeSession: ipc.closeSession,
   },
   IpcError: Error,
 }));
@@ -19,7 +27,7 @@ const updateChecks = vi.hoisted(() => ({ start: vi.fn() }));
 vi.mock('./lib/updates', () => ({ startUpdateChecks: updateChecks.start }));
 vi.mock('./lib/windows', async (orig) => ({ ...(await orig<typeof import('./lib/windows')>()), currentWindowLabel: () => ipc.label }));
 
-import { restoreWorkspace, useApp, workspaceSnapshot, type Tab } from './store';
+import { readHandoff, restoreWorkspace, useApp, workspaceSnapshot, type OpenSession, type Tab } from './store';
 import { persistsWorkspace, windowTitle } from './lib/windows';
 
 const reset = () => useApp.setState({ tabs: [], activeTab: undefined, closedTabs: [], sessions: {}, activeSession: undefined, toasts: [] });
@@ -158,5 +166,85 @@ describe('update available', () => {
     const st = useApp.getState();
     expect(st.settingsSection).toBe('updates');
     expect(st.tabs.find((t) => t.id === st.activeTab)?.kind).toBe('settings');
+  });
+});
+
+describe('move / open a connection in a new window', () => {
+  beforeEach(() => {
+    reset();
+    ipc.label = 'main';
+    ipc.handoff = null;
+    ipc.openWindow.mockClear();
+    ipc.closeSession.mockClear();
+  });
+  const session = (id: string, connId: string) => ({ session_id: id, config: { id: connId, name: connId }, activeSchema: 'shop', schemas: ['public', 'shop'] }) as unknown as OpenSession;
+
+  it('"Move to new window" hands over the query and table tabs, then closes the connection here', async () => {
+    useApp.setState({
+      sessions: { s1: session('s1', 'c1'), s2: session('s2', 'c2') },
+      activeSession: 's1',
+      tabs: [
+        { id: 'q1', kind: 'query', title: 'Q', sql: 'select 1', sessionId: 's1' },
+        { id: 't1', kind: 'table', title: 'orders', sessionId: 's1', target: { schema: 'shop', table: 'orders' } },
+        { id: 'q2', kind: 'query', title: 'Other', sql: 'select 2', sessionId: 's2' },
+      ],
+    });
+    await useApp.getState().openSessionInNewWindow('s1', true);
+    expect(ipc.openWindow).toHaveBeenCalledWith({
+      connectionId: 'c1',
+      schema: 'shop',
+      queryTabs: [expect.objectContaining({ id: 'q1', sql: 'select 1' })],
+      tableTabs: [{ title: 'orders', target: { schema: 'shop', table: 'orders' } }],
+    });
+    expect(ipc.closeSession).toHaveBeenCalledWith('s1');
+    expect(Object.keys(useApp.getState().sessions)).toEqual(['s2']);
+    expect(useApp.getState().tabs.map((t) => t.id)).toEqual(['q2']);
+  });
+
+  it('"Open in new window" keeps everything here and sends only the connection', async () => {
+    useApp.setState({ sessions: { s1: session('s1', 'c1') }, tabs: [{ id: 'q1', kind: 'query', title: 'Q', sessionId: 's1' }] });
+    await useApp.getState().openSessionInNewWindow('s1', false);
+    expect(ipc.openWindow).toHaveBeenCalledWith({ connectionId: 'c1', schema: 'shop', queryTabs: [], tableTabs: [] });
+    expect(ipc.closeSession).not.toHaveBeenCalled();
+    expect(useApp.getState().tabs).toHaveLength(1);
+  });
+
+  it('nothing is closed when the new window cannot be opened', async () => {
+    useApp.setState({ sessions: { s1: session('s1', 'c1') }, tabs: [] });
+    ipc.openWindow.mockRejectedValueOnce(new Error('no window'));
+    await useApp.getState().openSessionInNewWindow('s1', true);
+    expect(ipc.closeSession).not.toHaveBeenCalled();
+    expect(useApp.getState().sessions.s1).toBeTruthy();
+    expect(useApp.getState().toasts.at(-1)).toMatchObject({ kind: 'error', text: 'no window' });
+  });
+
+  it('a new window opens the handed-over connection, its database and tabs', async () => {
+    ipc.label = 'window-2';
+    ipc.handoff = { connectionId: 'c1', schema: 'shop', queryTabs: [{ id: 'q1', kind: 'query', title: 'Q', sql: 'select 1', sessionId: 'old' }], tableTabs: [{ title: 'orders', target: { schema: 'shop', table: 'orders' } }] };
+    const openConnection = vi.fn(async () => {
+      useApp.setState({ sessions: { s9: session('s9', 'c1') } });
+      return 's9';
+    });
+    const setActiveSchema = vi.fn();
+    useApp.setState({ openConnection, setActiveSchema } as never);
+    await useApp.getState().init();
+    expect(openConnection).toHaveBeenCalledWith('c1');
+    expect(setActiveSchema).toHaveBeenCalledWith('s9', 'shop');
+    const tabs = useApp.getState().tabs;
+    expect(tabs[0]).toMatchObject({ id: 'q1', sql: 'select 1', sessionId: undefined });
+    expect(tabs.find((t) => t.kind === 'table')).toMatchObject({ title: 'orders', sessionId: 's9' });
+  });
+
+  it('ignores a hand-off that is not well-formed', () => {
+    expect(readHandoff(null)).toBeNull();
+    expect(readHandoff({ connectionId: '' })).toBeNull();
+    expect(readHandoff({ connectionId: 'c1', tableTabs: [{ title: 'x' }, { title: 'y', target: { table: 't' } }] })?.tableTabs).toEqual([{ title: 'y', target: { table: 't' } }]);
+  });
+
+  it('closes every other connection', async () => {
+    useApp.setState({ sessions: { s1: session('s1', 'c1'), s2: session('s2', 'c2'), s3: session('s3', 'c3') }, tabs: [] });
+    await useApp.getState().closeOtherSessions('s2');
+    expect(Object.keys(useApp.getState().sessions)).toEqual(['s2']);
+    expect(ipc.closeSession.mock.calls.map((c) => c[0]).sort()).toEqual(['s1', 's3']);
   });
 });
