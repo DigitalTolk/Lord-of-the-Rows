@@ -32,36 +32,39 @@ describe('activity', () => {
       await clickText(b, 'OK', { exact: true });
       await until(async () => (await pageText(b)).includes('customers'), 'object tree');
 
+      // Earlier test files leave restored query tabs behind, so pin every step to the tab this test
+      // opens: wait until a new panel is the visible one, put the SQL in *its* editor, click *its*
+      // Run, and treat the query as started only when *its* Cancel button turns on. (A server-wide
+      // "N running" check is not enough: another session's query satisfies it before ours starts.)
+      const before = await b.execute(() => [...document.querySelectorAll('[role=tabpanel]')].map((p) => p.id));
       await b.execute(() => document.querySelector('button[aria-label="New SQL query"]')?.click());
-      await until(() => b.execute(() => !!document.querySelector('[role=tabpanel]:not([hidden]) .monaco-editor')), 'query editor');
+      const tabPanel = await until(
+        () =>
+          b.execute((ids) => {
+            const p = document.querySelector('[role=tabpanel]:not([hidden])');
+            return p && !ids.includes(p.id) && p.querySelector('.monaco-editor') ? p.id : false;
+          }, before),
+        'new query tab',
+      );
       await until(
         () =>
-          b.execute(() => {
-            const node = document.querySelector('[role=tabpanel]:not([hidden]) .monaco-editor');
+          b.execute((id) => {
+            const node = document.getElementById(id)?.querySelector('.monaco-editor');
             const ed = node && globalThis.__monaco?.editor.getEditors().find((e) => e.getContainerDomNode().contains(node) || node.contains(e.getContainerDomNode()));
             if (!ed) return false;
             ed.setValue('SELECT SLEEP(60) AS slept');
             return true;
-          }),
+          }, tabPanel),
         'set sql',
       );
-      // Restored tabs from earlier test files can still be settling, so click Run in the visible tab
-      // and wait for the status bar to count the query as running (re-clicking only if it never started).
-      const runVisible = () =>
-        b.execute(() => {
-          const panel = document.querySelector('[role=tabpanel]:not([hidden])');
-          const btn = [...(panel?.querySelectorAll('button') ?? [])].find((x) => x.innerText.trim() === 'Run all' && !x.disabled);
-          btn?.click();
-          return !!btn;
-        });
-      const statusRunning = async () => /\d+ running/.test(await b.execute(() => document.querySelector('footer')?.innerText ?? document.body.innerText));
+      const ourQueryRunning = () => b.execute((id) => !!document.getElementById(id)?.querySelector('button[aria-label="Cancel"]:not([disabled])'), tabPanel);
       const t0 = Date.now();
       await until(async () => {
-        if (await statusRunning()) return true;
-        await runVisible();
+        if (await ourQueryRunning()) return true;
+        await b.execute((id) => [...(document.getElementById(id)?.querySelectorAll('button') ?? [])].find((x) => x.innerText.trim() === 'Run all' && !x.disabled)?.click(), tabPanel);
         await sleep(1500);
-        return statusRunning();
-      }, 'query running', 20000);
+        return ourQueryRunning();
+      }, 'our query running', 20000);
 
       await b.keys(['Control', 'Shift', 'a']);
       await until(async () => (await panel()).includes('SLEEP(60)'), 'query listed in Activity', 20000);
