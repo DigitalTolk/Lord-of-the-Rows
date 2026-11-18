@@ -18,7 +18,7 @@ const ENV_COLOR: Record<string, string> = { production: 'rgb(var(--danger))', st
  */
 export function ConnectionRail() {
   const { t } = useTranslation();
-  const { sessions, activeSession, switchSession, closeSession, tabs } = useApp();
+  const { sessions, activeSession, switchSession, tabs } = useApp();
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const list = Object.values(sessions);
   const activeS = activeSession ? sessions[activeSession] : undefined;
@@ -74,8 +74,7 @@ export function ConnectionRail() {
       {activeS && <SchemaRail s={activeS} />}
       {menu && (
         <MenuPopup x={menu.x} y={menu.y} onClose={() => setMenu(null)} label={sessions[menu.id]?.config.name}>
-          <button role="menuitem" className="menu-item" onClick={() => { switchSession(menu.id); useApp.getState().openTab({ kind: 'query', title: t('shell.queryTab'), sessionId: menu.id, sql: '' }); setMenu(null); }}>{t('query.newTab')}</button>
-          <button role="menuitem" className="menu-item text-danger" onClick={() => { void closeSession(menu.id); setMenu(null); }}>{t('common.disconnect')}</button>
+          <ConnectionMenuItems id={menu.id} onDone={() => setMenu(null)} />
         </MenuPopup>
       )}
     </nav>
@@ -155,9 +154,65 @@ function SchemaRail({ s }: { s: OpenSession }) {
       })}
       {menu && (
         <MenuPopup x={menu.x} y={menu.y} className="w-44" label={menu.schema} onClose={() => setMenu(null)}>
-          <button role="menuitem" className="menu-item" onClick={() => { useOpenedSchemas.getState().remove(s.session_id, menu.schema); setMenu(null); }}>{t('common.close')}</button>
+          <DatabaseMenuItems s={s} schema={menu.schema} others={list.filter((x) => x !== menu.schema)} onDone={() => setMenu(null)} />
         </MenuPopup>
       )}
     </div>
+  );
+}
+
+const Sep = () => <div role="separator" className="my-1 border-t border-border" />;
+
+/** Right-click menu of an open connection in the rail. */
+function ConnectionMenuItems({ id, onDone }: { id: string; onDone: () => void }) {
+  const { t } = useTranslation();
+  const st = useApp();
+  const s = st.sessions[id];
+  if (!s) return null;
+  const others = Object.keys(st.sessions).filter((x) => x !== id).length;
+  const run = (f: () => void) => () => {
+    onDone();
+    f();
+  };
+  return (
+    <>
+      <button role="menuitem" className="menu-item" onClick={run(() => { st.switchSession(id); st.openTab({ kind: 'query', title: t('shell.queryTab'), sessionId: id, sql: '' }); })}>{t('query.newTab')}</button>
+      <button role="menuitem" className="menu-item" onClick={run(() => { st.switchSession(id); void import('./OpenDatabaseDialog').then((m) => m.openDatabasePicker()); })}>{t('openDb.paletteLabel')}</button>
+      <button role="menuitem" className="menu-item" onClick={run(() => void st.loadObjects(id, s.activeSchema))}>{t('common.refresh')}</button>
+      <Sep />
+      <button role="menuitem" className="menu-item" disabled={!s.config.id} onClick={run(() => void st.openSessionInNewWindow(id, true))}>{t('rail.moveToNewWindow')}</button>
+      <button role="menuitem" className="menu-item" disabled={!s.config.id} onClick={run(() => void st.openSessionInNewWindow(id, false))}>{t('rail.openInNewWindow')}</button>
+      {s.config.id && (
+        <>
+          <Sep />
+          <button role="menuitem" className="menu-item" onClick={run(() => useApp.setState({ connectionDialog: { id: s.config.id } }))}>{t('conn.edit')}</button>
+        </>
+      )}
+      <Sep />
+      <button role="menuitem" className="menu-item text-danger" onClick={run(() => void st.closeSession(id))}>{t('rail.closeConnection')}</button>
+      <button role="menuitem" className="menu-item disabled:opacity-45" disabled={others === 0} onClick={run(() => void st.closeOtherSessions(id))}>{t('rail.closeOtherConnections')}</button>
+    </>
+  );
+}
+
+/** Right-click menu of an opened database (schema) in the rail. */
+function DatabaseMenuItems({ s, schema, others, onDone }: { s: OpenSession; schema: string; others: string[]; onDone: () => void }) {
+  const { t } = useTranslation();
+  const st = useApp();
+  const run = (f: () => void) => () => {
+    onDone();
+    f();
+  };
+  const opened = useOpenedSchemas.getState();
+  return (
+    <>
+      <button role="menuitem" className="menu-item" disabled={s.activeSchema === schema} onClick={run(() => st.setActiveSchema(s.session_id, schema))}>{t('rail.openDatabase')}</button>
+      <button role="menuitem" className="menu-item" onClick={run(() => { st.setActiveSchema(s.session_id, schema); st.openTab({ kind: 'query', title: t('shell.queryTab'), sessionId: s.session_id, sql: '' }); })}>{t('query.newTab')}</button>
+      <button role="menuitem" className="menu-item" onClick={run(() => void st.loadObjects(s.session_id, schema))}>{t('common.refresh')}</button>
+      <button role="menuitem" className="menu-item" onClick={run(() => void navigator.clipboard?.writeText(schema).catch(() => undefined))}>{t('tree.copyName')}</button>
+      <Sep />
+      <button role="menuitem" className="menu-item" onClick={run(() => opened.remove(s.session_id, schema))}>{t('common.close')}</button>
+      <button role="menuitem" className="menu-item disabled:opacity-45" disabled={others.length === 0} onClick={run(() => others.forEach((x) => opened.remove(s.session_id, x)))}>{t('rail.closeOtherDatabases')}</button>
+    </>
   );
 }

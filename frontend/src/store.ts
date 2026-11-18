@@ -31,6 +31,30 @@ export function workspaceSnapshot(tabs: Tab[]): Tab[] {
     .map(({ id, kind, title, sql, pinned, split, sql2 }) => ({ id, kind, title, sql: (sql ?? '').slice(0, 200_000), pinned, split, sql2: sql2 == null ? undefined : sql2.slice(0, 200_000) }));
 }
 
+/**
+ * What "Move to new window" / "Open in new window" hands the new window: the saved connection to
+ * open, its database, and (when moving) its query and table tabs.
+ */
+export interface WindowHandoff {
+  connectionId: string;
+  schema?: string | null;
+  queryTabs?: Tab[];
+  tableTabs?: { title: string; target: TableTarget }[];
+}
+
+/** Validates a hand-off received from the backend (it round-trips as untyped JSON). */
+export function readHandoff(v: unknown): WindowHandoff | null {
+  if (!v || typeof v !== 'object') return null;
+  const h = v as Partial<WindowHandoff>;
+  if (typeof h.connectionId !== 'string' || !h.connectionId) return null;
+  return {
+    connectionId: h.connectionId,
+    schema: typeof h.schema === 'string' ? h.schema : null,
+    queryTabs: restoreWorkspace(h.queryTabs),
+    tableTabs: Array.isArray(h.tableTabs) ? h.tableTabs.filter((t) => t && typeof t.title === 'string' && t.target && typeof t.target.table === 'string') : [],
+  };
+}
+
 /** Tabs to restore from a saved snapshot: query tabs only, detached from any session. */
 export function restoreWorkspace(saved: unknown): Tab[] {
   if (!Array.isArray(saved)) return [];
@@ -107,6 +131,10 @@ interface State {
   /** Toggle a query tab's split. With `dir`, switch to that layout (or close the split if it is already in it). */
   toggleSplit(id: string, dir?: SplitDir): void;
   openWindow(): Promise<void>;
+  /** Opens this session's connection in a new window; `move` also brings its tabs and closes it here. */
+  openSessionInNewWindow(sessionId: string, move: boolean): Promise<void>;
+  /** Closes every open connection in this window except `keep`. */
+  closeOtherSessions(keep: string): Promise<void>;
   closeWindow(): Promise<void>;
   /** `action` adds a button (e.g. "Review"); such toasts stay longer. */
   toast(kind: 'info' | 'error' | 'ok', text: string, action?: ToastAction): void;
@@ -147,6 +175,21 @@ export const useApp = create<State>((set, get) => ({
     if (persistsWorkspace(currentWindowLabel())) {
       const tabs = restoreWorkspace(settings['workspace.tabs']);
       if (tabs.length) set({ tabs, activeTab: tabs[0].id });
+    } else {
+      // A window opened by "Move/Open in new window" starts with that connection (and its tabs).
+      const h = readHandoff(await api.takeWindowHandoff().catch(() => null));
+      if (h) {
+        if (h.queryTabs?.length) set({ tabs: h.queryTabs, activeTab: h.queryTabs[0].id });
+        try {
+          const id = await get().openConnection(h.connectionId);
+          if (id) {
+            if (h.schema && get().sessions[id]?.schemas.includes(h.schema)) get().setActiveSchema(id, h.schema);
+            for (const t of h.tableTabs ?? []) get().openTab({ kind: 'table', title: t.title, target: t.target, sessionId: id });
+          }
+        } catch (e) {
+          get().toast('error', errMsg(e));
+        }
+      }
     }
   },
 
@@ -347,6 +390,30 @@ export const useApp = create<State>((set, get) => ({
     } catch (e) {
       get().toast('error', errMsg(e));
     }
+  },
+
+  async openSessionInNewWindow(sessionId, move) {
+    const s = get().sessions[sessionId];
+    if (!s?.config.id) return;
+    const own = get().tabs.filter((t) => t.sessionId === sessionId);
+    const handoff: WindowHandoff = {
+      connectionId: s.config.id,
+      schema: s.activeSchema,
+      queryTabs: move ? workspaceSnapshot(own) : [],
+      tableTabs: move ? own.filter((t) => t.kind === 'table' && t.target).map((t) => ({ title: t.title, target: t.target! })) : [],
+    };
+    try {
+      await api.openWindow(handoff);
+    } catch (e) {
+      get().toast('error', errMsg(e));
+      return;
+    }
+    if (move) await get().closeSession(sessionId);
+  },
+
+  async closeOtherSessions(keep) {
+    for (const id of Object.keys(get().sessions)) if (id !== keep) await get().closeSession(id);
+    if (get().sessions[keep]) get().switchSession(keep);
   },
 
   async closeWindow() {

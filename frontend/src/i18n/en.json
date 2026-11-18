@@ -704,7 +704,13 @@
   },
   "rail": {
     "label": "Open connections",
-    "active": " (active)"
+    "active": " (active)",
+    "moveToNewWindow": "Move to new window",
+    "openInNewWindow": "Open in new window",
+    "closeConnection": "Close connection",
+    "closeOtherConnections": "Close other connections",
+    "openDatabase": "Open",
+    "closeOtherDatabases": "Close other databases"
   },
   "welcome": {
     "version": "Version {{version}}",

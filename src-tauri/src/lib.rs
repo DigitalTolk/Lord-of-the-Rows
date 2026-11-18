@@ -111,6 +111,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             windows::open_window,
+            windows::take_window_handoff,
             commands::open_privacy_settings,
             commands::list_connections,
             commands::save_connection,
