@@ -7,6 +7,7 @@ import { SafetyDialog } from './components/SafetyDialog';
 import { CommandPalette, panelDomId, StatusBar, TabBar, tabDomId, TopBar } from './components/Shell';
 import { Welcome } from './components/Welcome';
 import { OpenDatabaseHost, useDbPicker } from './components/OpenDatabaseDialog';
+import { ExportHost } from './components/ExportDialog';
 import { ImportConnectionsHost } from './components/ImportConnectionsDialog';
 import { AccessWatcher } from './components/AccessWatcher';
 import { AccessEndedOverlay, AccessExpiryBanner } from './components/AccessBanner';
@@ -282,6 +283,7 @@ export default function App() {
       {st.connectionDialog && <ConnectionDialog key={JSON.stringify(st.connectionDialog)} />}
       {st.paletteOpen && <CommandPalette />}
       <OpenDatabaseHost />
+      <ExportHost />
       <ImportConnectionsHost />
       <AccessWatcher />
       {pending && <SafetyDialog pending={pending} />}

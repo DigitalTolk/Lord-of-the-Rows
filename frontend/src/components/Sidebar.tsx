@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { openExport } from './ExportDialog';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/ipc';
 import type { ObjectKind, ObjectRef } from '../lib/types';
@@ -86,6 +87,7 @@ export function Sidebar({ sessionId }: { sessionId: string }) {
         case 'structure': return openTab({ kind: 'structure', title: o.name, sessionId, target: { schema: o.schema, table: o.name } });
         case 'name': return navigator.clipboard.writeText(o.name);
         case 'qualified': return navigator.clipboard.writeText(qualify(d, o.schema, o.name));
+        case 'export': return openExport({ sessionId, tables: [{ schema: o.schema ?? null, table: o.name }] });
         case 'ddl': return openTab({ kind: 'query', title: `${o.name}.sql`, sessionId, sql: await api.objectDdl(sessionId, o) });
         case 'select': case 'insert': case 'update': case 'delete': {
           const desc = await api.describeTable(sessionId, { schema: o.schema, table: o.name });
@@ -217,7 +219,7 @@ export function Sidebar({ sessionId }: { sessionId: string }) {
       {ctx && (
         <MenuPopup x={ctx.x} y={ctx.y} className="w-52" label={ctx.o.name} onClose={() => setCtx(null)}>
           {(['table', 'view', 'materialized_view'].includes(ctx.o.kind)
-            ? [['data', t('tree.openData')], ['structure', t('tree.openStructure')], ['-'], ['select', t('tree.genSelect')], ['insert', t('tree.genInsert')], ['update', t('tree.genUpdate')], ['delete', t('tree.genDelete')], ['ddl', t('tree.showDdl')], ['-'], ['name', t('tree.copyName')], ['qualified', t('tree.copyQualified')], ['-'], ...(ctx.o.kind === 'table' ? [['truncate', t('tree.truncate')]] : []), ['drop', t('tree.drop')]]
+            ? [['data', t('tree.openData')], ['structure', t('tree.openStructure')], ['-'], ['select', t('tree.genSelect')], ['insert', t('tree.genInsert')], ['update', t('tree.genUpdate')], ['delete', t('tree.genDelete')], ['ddl', t('tree.showDdl')], ['export', t('tree.export')], ['-'], ['name', t('tree.copyName')], ['qualified', t('tree.copyQualified')], ['-'], ...(ctx.o.kind === 'table' ? [['truncate', t('tree.truncate')]] : []), ['drop', t('tree.drop')]]
             : [['data', t('tree.showDdl')], ['name', t('tree.copyName')], ['qualified', t('tree.copyQualified')]]
           ).map(([k, label], i) =>
             k === '-' ? <div key={i} role="separator" className="my-1 border-t border-border" /> : (

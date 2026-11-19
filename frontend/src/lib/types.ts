@@ -275,6 +275,7 @@ export type UpdateCheck =
 export type AvailableUpdate = Extract<UpdateCheck, { status: 'available' }>;
 export type UpdateProgress = { phase: 'downloading'; downloaded: number; total?: number | null } | { phase: 'verifying' } | { phase: 'installing' };
 export interface PickedFile { grant: string; name: string; display_path: string }
+export type ExportProgress = { kind: 'rows'; index: number; rows: number } | { kind: 'table_done'; index: number; rows: number; path: string };
 
 // Importing connections from other database tools. Rows never carry secrets.
 export type ConnImportSource = 'table_plus' | 'dbeaver' | 'sequel_ace' | 'sequel_pro' | 'pg_admin' | 'data_grip' | 'url_list';

@@ -27,6 +27,8 @@ pub struct Session {
 pub enum GrantMode {
     Read,
     Write,
+    /// Write new files inside a chosen folder (multi-table export).
+    Folder,
 }
 
 /// A file the user picked in a native dialog. The webview only ever holds the
