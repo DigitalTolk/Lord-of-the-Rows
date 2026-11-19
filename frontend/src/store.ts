@@ -13,6 +13,9 @@ export interface Tab {
   kind: TabKind;
   title: string;
   sessionId?: string;
+  /** The database (schema) that was selected when the tab was opened: the tab only shows while
+   *  that database is the active one, so a query is never shown (and run) against another. */
+  schema?: string | null;
   target?: TableTarget;
   sql?: string;
   pinned?: boolean;
@@ -23,6 +26,22 @@ export interface Tab {
 }
 
 export type SplitDir = 'right' | 'down';
+
+/**
+ * Whether a tab belongs in the current view: tabs without a connection always do; a connection's
+ * tabs show while it is active, and only for the database they were opened for. Key-value stores
+ * (their "databases" are keyspaces browsed in one tree) and tabs without a database show for all.
+ */
+export function tabInView(t: Tab, st: { activeSession?: string; sessions: Record<string, { activeSchema: string | null; keyspaces?: unknown }> }): boolean {
+  if (!t.sessionId) return true;
+  if (t.sessionId !== st.activeSession) return false;
+  const s = st.sessions[t.sessionId];
+  if (!s || s.keyspaces || !t.schema || !s.activeSchema) return true;
+  return t.schema === s.activeSchema;
+}
+
+/** `lastTab` key: the last tab used per connection and database. */
+const viewKey = (sessionId: string, schema: string | null | undefined) => `${sessionId}\u0000${schema ?? ''}`;
 
 /** Query tabs as saved for session restore (text and split layout only, never results or sessions). */
 export function workspaceSnapshot(tabs: Tab[]): Tab[] {
@@ -275,7 +294,9 @@ export const useApp = create<State>((set, get) => ({
     const cur = st.activeTab;
     const lastTab = { ...st.lastTab };
     if (st.activeSession && cur) lastTab[st.activeSession] = cur;
-    const target = lastTab[id] && st.tabs.some((t) => t.id === lastTab[id]) ? lastTab[id] : st.tabs.find((t) => t.sessionId === id)?.id;
+    const view = { ...st, activeSession: id };
+    const inView = (tid: string | undefined) => !!tid && st.tabs.some((t) => t.id === tid && tabInView(t, view));
+    const target = inView(lastTab[id]) ? lastTab[id] : st.tabs.find((t) => t.sessionId === id && tabInView(t, view))?.id;
     set({ activeSession: id, activeTab: target, lastTab, launcher: false });
   },
 
@@ -285,7 +306,7 @@ export const useApp = create<State>((set, get) => ({
     delete sessions[sessionId];
     const tabs = get().tabs.filter((t) => t.sessionId !== sessionId);
     const next = Object.keys(sessions)[0];
-    set({ sessions, tabs, activeSession: next, activeTab: tabs.find((t) => t.sessionId === next)?.id });
+    set({ sessions, tabs, activeSession: next, activeTab: tabs.find((t) => t.sessionId === next && tabInView(t, { activeSession: next, sessions }))?.id });
   },
 
   async endSession(sessionId) {
@@ -318,7 +339,23 @@ export const useApp = create<State>((set, get) => ({
     if (!s) return;
     // The selected schema is also the default for unqualified names in SQL tabs.
     api.useSchema(sessionId, schema).catch((e) => get().toast('error', errMsg(e)));
-    set({ sessions: { ...get().sessions, [sessionId]: { ...s, activeSchema: schema } } });
+    const st = get();
+    const sessions = { ...st.sessions, [sessionId]: { ...s, activeSchema: schema } };
+    if (s.keyspaces || st.activeSession !== sessionId) {
+      set({ sessions });
+    } else {
+      // Each database has its own tabs: remember where we were, go back to where we were in the other one.
+      const lastTab = { ...st.lastTab };
+      if (st.activeTab) lastTab[viewKey(sessionId, s.activeSchema)] = st.activeTab;
+      const view = { ...st, sessions };
+      const inView = (tid: string | undefined) => !!tid && st.tabs.some((t) => t.id === tid && tabInView(t, view));
+      const back = lastTab[viewKey(sessionId, schema)];
+      const activeTab = inView(back) ? back : st.tabs.find((t) => t.sessionId === sessionId && tabInView(t, view))?.id;
+      // Working in tabs and this database has none yet: start it with an empty query tab.
+      const fresh: Tab | null =
+        !activeTab && st.tabs.some((t) => t.sessionId === sessionId) ? { id: uid(), kind: 'query', title: i18n.t('shell.queryTab'), sessionId, schema, sql: '' } : null;
+      set({ sessions, lastTab, activeTab: fresh?.id ?? activeTab, ...(fresh ? { tabs: [...st.tabs, fresh] } : {}) });
+    }
     if (s.keyspaces) return; // key-value: the tree loads lazily
     if (!s.objects[schema]) void get().loadObjects(sessionId, schema);
   },
@@ -335,14 +372,21 @@ export const useApp = create<State>((set, get) => ({
   openTab(t) {
     // Reuse an existing tab for the same table/view.
     const existing = get().tabs.find(
-      (x) => t.kind !== 'query' && x.kind === t.kind && x.sessionId === t.sessionId && x.target?.table === t.target?.table && x.target?.schema === t.target?.schema,
+      (x) =>
+        t.kind !== 'query' &&
+        x.kind === t.kind &&
+        x.sessionId === t.sessionId &&
+        x.target?.table === t.target?.table &&
+        x.target?.schema === t.target?.schema &&
+        (!x.schema || !t.sessionId || x.schema === get().sessions[t.sessionId]?.activeSchema),
     );
     if (existing) {
       set({ activeTab: existing.id });
       return existing.id;
     }
     const id = t.id ?? uid();
-    set({ tabs: [...get().tabs, { ...t, id }], activeTab: id });
+    const schema = t.schema !== undefined ? t.schema : t.sessionId ? (get().sessions[t.sessionId]?.activeSchema ?? null) : undefined;
+    set({ tabs: [...get().tabs, { ...t, id, ...(schema !== undefined ? { schema } : {}) }], activeTab: id });
     return id;
   },
 
@@ -365,7 +409,9 @@ export const useApp = create<State>((set, get) => ({
   },
 
   updateTab(id, patch) {
-    set({ tabs: get().tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+    // Binding a tab to a connection also binds it to that connection's current database.
+    const bind = patch.sessionId && patch.schema === undefined ? { schema: get().sessions[patch.sessionId]?.activeSchema ?? null } : {};
+    set({ tabs: get().tabs.map((t) => (t.id === id ? { ...t, ...patch, ...bind } : t)) });
   },
 
   moveTab(id, toIndex) {

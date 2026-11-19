@@ -733,7 +733,8 @@
     "closeConnection": "Cerrar conexión",
     "closeOtherConnections": "Cerrar las demás conexiones",
     "openDatabase": "Abrir",
-    "closeOtherDatabases": "Cerrar las demás bases de datos"
+    "closeOtherDatabases": "Cerrar las demás bases de datos",
+    "openTabs": "{{n}} pestañas abiertas"
   },
   "welcome": {
     "version": "Versión {{version}}",

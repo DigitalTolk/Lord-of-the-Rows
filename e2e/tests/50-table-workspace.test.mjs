@@ -240,8 +240,8 @@ describe('table workspace', () => {
       await until(async () => (await pageText(b)).includes('revenue_by_country'), 'object tree back');
       const current = await b.execute(() => document.querySelector('[role=listbox][aria-label="Databases"] [aria-selected=true]')?.getAttribute('title'));
       assert.equal(current, 'shop');
-      // Each entry is a cylinder icon with the schema name as its label.
-      const label = await b.execute(() => document.querySelector('[role=listbox][aria-label="Databases"] [title="shop"]')?.innerText.trim());
+      // Each entry is a cylinder icon with the schema name as its label (after its open-tab count, if any).
+      const label = await b.execute(() => document.querySelector('[role=listbox][aria-label="Databases"] [title="shop"]')?.innerText.trim().split('\n').pop());
       assert.equal(label, 'shop');
       // Switching schema in the sidebar adds it to the rail; clicking a rail entry switches back.
       await fill(b, 'Schemas', 'public');

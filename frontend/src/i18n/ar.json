@@ -802,7 +802,8 @@
     "closeConnection": "إغلاق الاتصال",
     "closeOtherConnections": "إغلاق الاتصالات الأخرى",
     "openDatabase": "فتح",
-    "closeOtherDatabases": "إغلاق قواعد البيانات الأخرى"
+    "closeOtherDatabases": "إغلاق قواعد البيانات الأخرى",
+    "openTabs": "{{n}} علامات تبويب مفتوحة"
   },
   "welcome": {
     "version": "الإصدار {{version}}",

@@ -20,6 +20,8 @@ vi.mock('./lib/ipc', () => ({
       return h;
     },
     closeSession: ipc.closeSession,
+    useSchema: async () => undefined,
+    listObjects: async () => [],
   },
   IpcError: Error,
 }));
@@ -27,7 +29,7 @@ const updateChecks = vi.hoisted(() => ({ start: vi.fn() }));
 vi.mock('./lib/updates', () => ({ startUpdateChecks: updateChecks.start }));
 vi.mock('./lib/windows', async (orig) => ({ ...(await orig<typeof import('./lib/windows')>()), currentWindowLabel: () => ipc.label }));
 
-import { readHandoff, restoreWorkspace, useApp, workspaceSnapshot, type OpenSession, type Tab } from './store';
+import { readHandoff, restoreWorkspace, tabInView, useApp, workspaceSnapshot, type OpenSession, type Tab } from './store';
 import { persistsWorkspace, windowTitle } from './lib/windows';
 
 const reset = () => useApp.setState({ tabs: [], activeTab: undefined, closedTabs: [], sessions: {}, activeSession: undefined, toasts: [] });
@@ -248,3 +250,48 @@ describe('move / open a connection in a new window', () => {
     expect(ipc.closeSession.mock.calls.map((c) => c[0]).sort()).toEqual(['s1', 's3']);
   });
 });
+
+describe('tabs belong to the database they were opened for', () => {
+  const sess = (id: string, schema: string) => ({ session_id: id, config: { id: `c-${id}`, name: id }, activeSchema: schema, schemas: ['prd', 'stg'], objects: { prd: [], stg: [] } }) as unknown as OpenSession;
+  // An earlier test replaces these actions with mocks; use the real ones (captured at load).
+  const real = { setActiveSchema: useApp.getState().setActiveSchema, openTab: useApp.getState().openTab, updateTab: useApp.getState().updateTab };
+  const visible = () => {
+    const st = useApp.getState();
+    return st.tabs.filter((t) => tabInView(t, st)).map((t) => t.title);
+  };
+  beforeEach(() => {
+    reset();
+    useApp.setState({ ...real, sessions: { s1: sess('s1', 'prd') }, activeSession: 's1', lastTab: {} });
+  });
+
+  it('a query tab opened in one database is hidden in another, and comes back with it', () => {
+    const { openTab, setActiveSchema } = useApp.getState();
+    const a = openTab({ kind: 'query', title: 'A', sessionId: 's1', sql: 'select 1' });
+    openTab({ kind: 'settings', title: 'Settings' });
+    expect(useApp.getState().tabs.find((t) => t.id === a)?.schema).toBe('prd');
+    useApp.setState({ activeTab: a });
+
+    // The other database has no tabs yet: it starts with an empty query tab of its own.
+    setActiveSchema('s1', 'stg');
+    expect(visible()).toEqual(['Settings', 'Query']);
+    const b = useApp.getState().activeTab;
+    expect(useApp.getState().tabs.find((t) => t.id === b)).toMatchObject({ kind: 'query', sessionId: 's1', schema: 'stg', sql: '' });
+
+    setActiveSchema('s1', 'prd');
+    expect(visible()).toEqual(['A', 'Settings']);
+    expect(useApp.getState().activeTab).toBe(a);
+    setActiveSchema('s1', 'stg');
+    expect(useApp.getState().activeTab).toBe(b);
+  });
+
+  it('tabs without a database (restored, or opened before) show everywhere; binding a tab sets its database', () => {
+    useApp.setState({ tabs: [{ id: 'r', kind: 'query', title: 'R', sql: '' }], activeTab: 'r' });
+    useApp.getState().setActiveSchema('s1', 'stg');
+    expect(visible()).toEqual(['R']);
+    useApp.getState().updateTab('r', { sessionId: 's1' });
+    expect(useApp.getState().tabs[0].schema).toBe('stg');
+    useApp.getState().setActiveSchema('s1', 'prd');
+    expect(visible()).toEqual(['Query']);
+  });
+});
+
