@@ -69,6 +69,38 @@ function token(name: string): string {
   return '#' + [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * SQL syntax colours. Monaco's built-in themes paint strings pure red (#FF0000) and functions
+ * pure magenta (#FF00FF), which glare on a dark background; these are softer (TablePlus-like)
+ * while keeping at least 4.5:1 contrast on the editor background.
+ */
+export const SQL_RULES = {
+  dark: [
+    { token: 'keyword.sql', foreground: '6CA6EA' },
+    { token: 'predefined.sql', foreground: 'D8CC8F' },
+    { token: 'string.sql', foreground: 'E3877C' },
+    { token: 'string.quote.sql', foreground: 'E3877C' },
+    { token: 'number.sql', foreground: 'B9A2F2' },
+    { token: 'operator.sql', foreground: 'A9A9B3' },
+    { token: 'delimiter.sql', foreground: 'A9A9B3' },
+    { token: 'comment.sql', foreground: '8A8F98', fontStyle: 'italic' },
+    { token: 'comment.quote.sql', foreground: '8A8F98', fontStyle: 'italic' },
+    { token: 'identifier.sql', foreground: 'D2D2D8' },
+    { token: 'identifier.quote.sql', foreground: 'D2D2D8' },
+  ],
+  light: [
+    { token: 'keyword.sql', foreground: '0B57C2' },
+    { token: 'predefined.sql', foreground: '8A5A00' },
+    { token: 'string.sql', foreground: 'B3321F' },
+    { token: 'string.quote.sql', foreground: 'B3321F' },
+    { token: 'number.sql', foreground: '6B3FB8' },
+    { token: 'operator.sql', foreground: '5C5C66' },
+    { token: 'delimiter.sql', foreground: '5C5C66' },
+    { token: 'comment.sql', foreground: '6A6F78', fontStyle: 'italic' },
+    { token: 'comment.quote.sql', foreground: '6A6F78', fontStyle: 'italic' },
+  ],
+};
+
 export function defineAppThemes() {
   const t = (n: string, alpha = '') => (token(n) ? token(n) + alpha : undefined);
   const colors = Object.fromEntries(
@@ -101,8 +133,8 @@ export function defineAppThemes() {
   const dark = document.documentElement.classList.contains('dark');
   // Only the theme matching the current tokens gets the token colours; the
   // other keeps Monaco's defaults until it becomes active and is re-defined.
-  monaco.editor.defineTheme('dbs-light', { base: 'vs', inherit: true, rules: [], colors: dark ? {} : colors });
-  monaco.editor.defineTheme('dbs-dark', { base: 'vs-dark', inherit: true, rules: [], colors: dark ? colors : {} });
+  monaco.editor.defineTheme('dbs-light', { base: 'vs', inherit: true, rules: SQL_RULES.light, colors: dark ? {} : colors });
+  monaco.editor.defineTheme('dbs-dark', { base: 'vs-dark', inherit: true, rules: SQL_RULES.dark, colors: dark ? colors : {} });
 }
 
 /** Re-derive the custom themes from the current tokens and switch all editors. */

@@ -37,7 +37,7 @@
   --raised: 45 45 50;
   --hover: 58 58 64;
   --border: 66 66 73;
-  --fg: 236 236 240;
+  --fg: 214 214 220;          /* off-white: softer than pure white on dark grey, ~11:1 on --bg */
   --muted: 170 170 180;
   --accent: 118 174 255;
   --accent-solid: 32 104 220;
