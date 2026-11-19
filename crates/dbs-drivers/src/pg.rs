@@ -261,6 +261,33 @@ impl PgConnection {
         Err(DbError::new(ErrorKind::Connection, "activity connection unavailable"))
     }
 
+    /// Result columns, with the source schema, table and column for those that come straight
+    /// from a table (looked up once by table OID), so a single-table result can be edited.
+    async fn result_columns(&self, stmt: &tokio_postgres::Statement) -> Vec<ColumnMeta> {
+        let mut cols: Vec<ColumnMeta> =
+            stmt.columns().iter().map(|c| ColumnMeta { name: c.name().into(), type_name: c.type_().name().into(), ..Default::default() }).collect();
+        let mut oids: Vec<u32> = stmt.columns().iter().filter_map(|c| c.table_oid()).filter(|o| *o != 0).collect();
+        oids.sort_unstable();
+        oids.dedup();
+        if oids.is_empty() {
+            return cols;
+        }
+        const SQL: &str = "SELECT c.oid, n.nspname, c.relname, a.attnum, a.attname FROM pg_catalog.pg_class c \
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 WHERE c.oid = ANY($1)";
+        // Best effort: without the names the result is simply read-only.
+        let Ok(rows) = self.client.query(SQL, &[&oids]).await else { return cols };
+        for (meta, c) in cols.iter_mut().zip(stmt.columns()) {
+            let (Some(oid), Some(num)) = (c.table_oid(), c.column_id()) else { continue };
+            if let Some(r) = rows.iter().find(|r| r.get::<_, u32>(0) == oid && r.get::<_, i16>(3) == num) {
+                meta.schema = Some(r.get(1));
+                meta.table = Some(r.get(2));
+                meta.column = Some(r.get(4));
+            }
+        }
+        cols
+    }
+
     fn take_notices(&self) -> Vec<String> {
         std::mem::take(&mut *self.notices.lock().unwrap())
     }
@@ -307,8 +334,7 @@ impl PgConnection {
                 notices: self.take_notices(),
             });
         }
-        let columns: Vec<ColumnMeta> =
-            stmt.columns().iter().map(|c| ColumnMeta { name: c.name().into(), type_name: c.type_().name().into(), nullable: None, table: None }).collect();
+        let columns = self.result_columns(&stmt).await;
         let ncol = columns.len();
         let stream = self.client.query_raw(&stmt, std::iter::empty::<PgParam>()).await.map_err(map_pg_err)?;
         pin_mut!(stream);
@@ -349,12 +375,18 @@ impl PgConnection {
         for m in msgs {
             match m {
                 M::RowDescription(cols) => {
-                    columns = cols.iter().map(|c| ColumnMeta { name: c.name().into(), type_name: "text".into(), nullable: None, table: None }).collect();
+                    columns = cols
+                        .iter()
+                        .map(|c| ColumnMeta { name: c.name().into(), type_name: "text".into(), nullable: None, table: None, ..Default::default() })
+                        .collect();
                 }
                 M::Row(r) => {
                     if columns.is_empty() {
-                        columns =
-                            r.columns().iter().map(|c| ColumnMeta { name: c.name().into(), type_name: "text".into(), nullable: None, table: None }).collect();
+                        columns = r
+                            .columns()
+                            .iter()
+                            .map(|c| ColumnMeta { name: c.name().into(), type_name: "text".into(), nullable: None, table: None, ..Default::default() })
+                            .collect();
                     }
                     if rows.len() >= max_rows {
                         truncated = true;
@@ -404,8 +436,7 @@ impl PgConnection {
                 })
                 .await;
         }
-        let columns: Vec<ColumnMeta> =
-            stmt.columns().iter().map(|c| ColumnMeta { name: c.name().into(), type_name: c.type_().name().into(), nullable: None, table: None }).collect();
+        let columns = self.result_columns(&stmt).await;
         let ncol = columns.len();
         let stream = self.client.query_raw(&stmt, std::iter::empty::<PgParam>()).await.map_err(map_pg_err)?;
         pin_mut!(stream);
@@ -859,7 +890,13 @@ impl DatabaseConnection for PgConnection {
         let columns = stmt
             .columns()
             .iter()
-            .map(|c| ColumnMeta { name: c.name().into(), type_name: c.type_().name().into(), nullable: None, table: Some(t.table.clone()) })
+            .map(|c| ColumnMeta {
+                name: c.name().into(),
+                type_name: c.type_().name().into(),
+                nullable: None,
+                table: Some(t.table.clone()),
+                ..Default::default()
+            })
             .collect::<Vec<_>>();
         let n = columns.len();
         let data = rows.iter().map(|r| (0..n).map(|i| r.try_get::<_, PgAny>(i).map(|v| v.0).unwrap_or(Value::Null)).collect()).collect();

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/ipc';
 import { exporters, usePlugins } from '../lib/plugins';
@@ -6,7 +6,11 @@ import type { ColumnMeta, ExportFormat, StatementResult, Value } from '../lib/ty
 import { displayValue } from '../lib/value';
 import { fmtNumber } from '../lib/format';
 import { errMsg, useApp } from '../store';
-import { DataGrid } from './DataGrid';
+import { DataGrid, type GridHandle } from './DataGrid';
+import { Icon } from './icons';
+import { SqlPopover } from './SqlPopover';
+import { useResultEdit } from './useResultEdit';
+import { displayCombo } from '../lib/keys';
 
 import Chart from './Chart';
 
@@ -22,7 +26,7 @@ export async function copyAs(columns: ColumnMeta[], rows: Value[][], format: Exp
  * new result set starts, not on every streamed batch. Without it, every new
  * `results` array counts as a new run.
  */
-export function Results({ results, messages, runId }: { results: StatementResult[]; messages: string[]; runId?: string }) {
+export function Results({ results, messages, runId, sessionId }: { results: StatementResult[]; messages: string[]; runId?: string; sessionId?: string }) {
   const { t } = useTranslation();
   const toast = useApp((s) => s.toast);
   const withRows = results.filter((r) => r.result);
@@ -37,12 +41,38 @@ export function Results({ results, messages, runId }: { results: StatementResult
   const [recordRow, setRecordRow] = useState(0);
   const current = withRows[Math.min(idx, withRows.length - 1)];
   const rs = current?.result;
+  const grid = useRef<GridHandle>(null);
+  const edit = useResultEdit({ sessionId, rs, streaming: current?.streaming, searching: !!search });
+  const [preview, setPreview] = useState<{ sql: string; loading: boolean; error?: string } | null>(null);
+  const closePreview = () => setPreview(null);
+  const openPreview = async () => {
+    if (preview) return setPreview(null);
+    setPreview({ sql: '', loading: true });
+    try {
+      setPreview({ sql: (await edit.statements()).map((x) => x + ';').join('\n'), loading: false });
+    } catch (e) {
+      setPreview({ sql: '', loading: false, error: errMsg(e) });
+    }
+  };
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    const inField = e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+    if (k === 's' && edit.pending) {
+      e.preventDefault();
+      void edit.commit();
+    } else if (k === 'z' && !inField) {
+      e.preventDefault();
+      if (e.shiftKey) edit.redo();
+      else edit.undo();
+    }
+  };
 
   const filteredRows = useMemo(() => {
-    if (!rs || !search) return rs?.rows ?? [];
+    if (!rs || !search) return edit.rows;
     const q = search.toLowerCase();
-    return rs.rows.filter((r) => r.some((v) => displayValue(v).toLowerCase().includes(q)));
-  }, [rs, search]);
+    return edit.rows.filter((r) => r.some((v) => displayValue(v).toLowerCase().includes(q)));
+  }, [rs, search, edit.rows]);
 
   const copy = async (rowsIdx: number[], cols: string[], format: ExportFormat = 'tsv') => {
     if (!rs) return;
@@ -80,7 +110,7 @@ export function Results({ results, messages, runId }: { results: StatementResult
   ];
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" onKeyDown={onKeyDown}>
       <div className="flex h-[32px] shrink-0 items-center gap-1 border-b border-border bg-panel px-2" role="tablist">
         <button role="tab" aria-selected={tab === 'results'} className={`btn btn-ghost ${tab === 'results' ? 'font-semibold' : ''}`} onClick={() => setTab('results')}>{t('results.title')}</button>
         <button role="tab" aria-selected={tab === 'messages'} className={`btn btn-ghost ${tab === 'messages' ? 'font-semibold' : ''}`} onClick={() => setTab('messages')}>{t('query.messages')} ({allMessages.length})</button>
@@ -107,6 +137,21 @@ export function Results({ results, messages, runId }: { results: StatementResult
                 {pluginExporters.map((p) => <option key={p.id} value={p.id}>{p.manifest.export?.label} ({p.manifest.name})</option>)}
               </select>
             )}
+            {mode === 'grid' && (
+              <>
+                <button className="icon-btn" title={`${t('gridTools.jumpTitle')} (${displayCombo('Mod+J')})`} aria-label={t('gridTools.jumpTitle')} onClick={() => grid.current?.openJump()}><Icon name="search" size={15} /></button>
+                <button className="icon-btn" title={t('gridTools.columnsTitle')} aria-label={t('gridTools.columnsTitle')} onClick={() => grid.current?.openColumns()}><Icon name="columns" size={15} /></button>
+              </>
+            )}
+            {sessionId && edit.reason !== 'connection' && edit.reason !== 'loading' && (
+              <span
+                className={`ms-1 flex shrink-0 items-center gap-1 rounded px-1.5 text-xs ${edit.editable ? 'text-ok' : 'text-muted'}`}
+                title={edit.editable ? t('resultEdit.editableHint', { table: edit.source?.target.table }) : t(`resultEdit.why.${edit.reason}`)}
+              >
+                <Icon name={edit.editable ? 'edit' : 'lock'} size={13} />
+                {edit.editable ? t('resultEdit.editable', { table: edit.source?.target.table }) : t('resultEdit.readOnly')}
+              </span>
+            )}
             <span className="ms-auto text-xs text-muted" aria-live="polite">
               {current.streaming ? (
                 <span>{t('query.loadingRows', { count: rs.rows.length, formatted: fmtNumber(rs.rows.length) })}{search ? ` · ${t('query.rowsReturned', { count: filteredRows.length, formatted: fmtNumber(filteredRows.length) })}` : ''}</span>
@@ -118,12 +163,48 @@ export function Results({ results, messages, runId }: { results: StatementResult
           </>
         )}
       </div>
+      {tab === 'results' && edit.pending > 0 && (
+        <div role="group" aria-label={t('tableWs.pendingTitle')} className="flex h-[32px] shrink-0 items-center gap-1 border-b border-border bg-warn/10 px-2 text-sm">
+          <span className="font-medium text-warn" aria-live="polite">{t('grid.pending', { count: edit.pending, formatted: fmtNumber(edit.pending) })}</span>
+          <span className="text-muted">· {edit.source?.target.table}</span>
+          <div className="ms-auto flex items-center gap-1">
+            <button className="btn h-6" onClick={edit.discard}>{t('common.discard')}</button>
+            <div className="relative">
+              <button className="btn h-6" aria-expanded={!!preview} onClick={() => void openPreview()}>{t('tableWs.pendingPreview')}</button>
+              {preview && (
+                <SqlPopover
+                  title={t('tableWs.pendingTitle')}
+                  sql={preview.sql}
+                  loading={preview.loading}
+                  error={preview.error}
+                  align="right"
+                  onClose={closePreview}
+                  actions={<button className="btn btn-primary h-7" disabled={!preview.sql} onClick={() => { setPreview(null); void edit.commit(); }}>{t('common.commit')}</button>}
+                />
+              )}
+            </div>
+            <button className="btn btn-primary h-6" title={`${t('tableWs.pendingCommit')} (${displayCombo('Mod+S')})`} onClick={() => { setPreview(null); void edit.commit(); }}>{t('common.commit')}</button>
+          </div>
+        </div>
+      )}
       {tab === 'messages' ? (
         <pre dir="ltr" className="min-h-0 flex-1 overflow-auto p-2 font-mono text-xs" aria-live="polite">{allMessages.join('\n')}</pre>
       ) : !rs ? (
         <div className="p-4 text-muted">{results.length ? allMessages.slice(0, 5).join('\n') : t('query.noResults')}</div>
       ) : mode === 'grid' ? (
-        <DataGrid columns={rs.columns} rows={filteredRows} onCopy={(r, c) => copy(r, c)} onSelectRows={(r) => r.length && setRecordRow(r[0])} ariaLabel={t('results.gridLabel')} />
+        <DataGrid
+          gridRef={grid}
+          columns={rs.columns}
+          rows={filteredRows}
+          staged={search ? undefined : edit.staged}
+          editable={edit.editable}
+          readOnlyColumns={edit.readOnlyColumns}
+          onEdit={edit.onEdit}
+          onEditMany={edit.onEditMany}
+          onDeleteRows={edit.onDeleteRows}
+          onSelectRows={(r) => r.length && setRecordRow(r[0])}
+          ariaLabel={t('results.gridLabel')}
+        />
       ) : mode === 'json' ? (
         <pre dir="ltr" className="min-h-0 flex-1 overflow-auto p-2 font-mono text-xs">
           {JSON.stringify(filteredRows.slice(0, 5000).map((r) => Object.fromEntries(rs.columns.map((c, i) => [c.name, r[i].t === 'null' ? null : displayValue(r[i])]))), null, 2)}

@@ -1,6 +1,6 @@
 import { fmtNumber } from '../lib/format';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ColumnDef, ColumnMeta, Engine, ExportFormat, FilterOp, ForeignKeyDef, SortDir, TableTarget, Value } from '../lib/types';
 import { displayValue, editableText, isNull, isNumeric, parseInput } from '../lib/value';
@@ -12,6 +12,7 @@ import { isMac } from '../lib/keys';
 import { errMsg, useApp } from '../store';
 import { CellEditor } from './CellEditor';
 import { ContextMenu, type MenuEntry, type MenuItem } from './GridContextMenu';
+import { ColumnsPicker, JumpPalette, type ToolColumn } from './GridTools';
 
 /** One staged cell change. `value: undefined` = DEFAULT (only for staged new rows: the column is omitted from the INSERT). */
 export interface CellEdit {
@@ -26,8 +27,17 @@ export interface GridSelectionInfo {
   focus: { row: number; col: string } | null;
 }
 
+/** Opens the grid's own tools from outside (toolbar buttons). */
+export interface GridHandle {
+  openJump: () => void;
+  openColumns: () => void;
+}
+
 export interface GridProps {
   columns: ColumnMeta[];
+  gridRef?: React.Ref<GridHandle>;
+  /** Columns that can't be edited even when the grid is editable (e.g. expressions in a query result). */
+  readOnlyColumns?: string[];
   rows: Value[][];
   staged?: StagedState;
   editable?: boolean;
@@ -103,6 +113,9 @@ export function DataGrid(p: GridProps) {
   const dragging = useRef(false);
   const pendingPaste = useRef<{ mode: 'block' | 'selected'; done: boolean } | null>(null);
   const scrollToEnd = useRef(false);
+  const [tool, setTool] = useState<'jump' | 'columns' | null>(null);
+  const revealCol = useRef<number | null>(null);
+  useImperativeHandle(p.gridRef, () => ({ openJump: () => setTool('jump'), openColumns: () => setTool('columns') }), []);
 
   useEffect(() => {
     setOrder(p.columns.map((_, i) => i));
@@ -178,7 +191,8 @@ export function DataGrid(p: GridProps) {
   const isInserted = (r: number) => r >= p.rows.length;
   const canEditRow = (r: number) => !!p.editable && !deletedSet.has(r) && (isInserted(r) || p.canEditExisting !== false);
   // Partially loaded binary values are never editable: saving them would write the truncated bytes.
-  const canEditCell = (r: number, ci: number) => canEditRow(r) && !truncatedBytes(cellValue(r, ci).v);
+  const readOnlyCols = useMemo(() => new Set(p.readOnlyColumns ?? []), [p.readOnlyColumns]);
+  const canEditCell = (r: number, ci: number) => canEditRow(r) && !readOnlyCols.has(p.columns[ci]?.name) && !truncatedBytes(cellValue(r, ci).v);
   const defOf = (name: string) => p.columnDefs?.find((d) => d.name === name);
   const ctxOf = (r: number, ci: number): CellContext => ({ col: p.columns[ci], value: cellValue(r, ci).v, inserted: isInserted(r), nullable: defOf(p.columns[ci].name)?.nullable });
 
@@ -408,6 +422,8 @@ export function DataGrid(p: GridProps) {
   const headerMenu = (ci: number): MenuEntry[] => [
     { id: 'hide', label: t('grid.hideColumn'), onSelect: () => setHidden((h) => new Set([...h, p.columns[ci].name])) },
     { id: 'showAll', label: t('grid.showAll'), disabled: hidden.size === 0, onSelect: () => setHidden(new Set()) },
+    { id: 'chooseColumns', label: t('gridTools.columnsTitle') + '…', onSelect: () => setTool('columns') },
+    { id: 'jump', label: t('gridTools.jumpTitle') + '…', shortcut: 'Mod+J', onSelect: () => setTool('jump') },
     { separator: true, id: 'h1' },
     { id: 'freeze', label: t('gridMenu.freeze'), onSelect: () => setFrozen(visibleCols.indexOf(ci) + 1) },
     { id: 'unfreeze', label: t('gridMenu.unfreeze'), disabled: frozen === 0, onSelect: () => setFrozen(0) },
@@ -488,6 +504,11 @@ export function DataGrid(p: GridProps) {
       openMenuAtFocus();
       return;
     }
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+      e.preventDefault();
+      setTool('jump');
+      return;
+    }
     if (!sel) {
       if (e.key.startsWith('Arrow') && total > 0 && visibleCols.length) setSel(S.single({ r: 0, c: 0 }));
       return;
@@ -540,6 +561,69 @@ export function DataGrid(p: GridProps) {
         }
         return;
     }
+  };
+
+  // ------------------------------------------------------------ jump / columns
+
+  const toolColumns: ToolColumn[] = useMemo(() => p.columns.map((c) => ({ name: c.name, type: c.type_name, hidden: hidden.has(c.name) })), [p.columns, hidden]);
+  const focusGridCell = (r: number, vc: number) => {
+    setSel(S.single({ r, c: vc }));
+    virt.scrollToIndex(r, { align: 'auto' });
+    const el = scroller.current;
+    if (el && vc >= frozen) {
+      // Bring the column into view to the right of the row numbers and frozen columns.
+      const frozenW = visibleCols.slice(0, frozen).reduce((w, ci) => w + width(ci), 0);
+      const x = left[vc] - 48 - frozenW;
+      const w = width(visibleCols[vc]);
+      if (x < el.scrollLeft || x + w > el.scrollLeft + el.clientWidth - 48 - frozenW) el.scrollLeft = Math.max(0, x);
+    }
+    el?.focus();
+  };
+  const jumpToColumn = (name: string) => {
+    const ci = colIndex(name);
+    if (ci < 0) return;
+    revealCol.current = ci;
+    if (hidden.has(name)) setHidden((h) => new Set([...h].filter((x) => x !== name)));
+    else setReveal((n) => n + 1);
+  };
+  // Runs after a hidden column is shown again, so its position is known.
+  const [reveal, setReveal] = useState(0);
+  useEffect(() => {
+    const ci = revealCol.current;
+    if (ci === null) return;
+    revealCol.current = null;
+    const vc = visibleCols.indexOf(ci);
+    if (vc >= 0) focusGridCell(Math.min(sel?.focus.r ?? 0, Math.max(0, total - 1)), vc);
+  }, [visibleCols, reveal]); // eslint-disable-line react-hooks/exhaustive-deps
+  const jumpToRow = (n: number) => {
+    if (!total) return;
+    focusGridCell(Math.max(0, Math.min(total - 1, n - 1)), Math.min(sel?.focus.c ?? 0, Math.max(0, visibleCols.length - 1)));
+  };
+  /** Next visible cell after the focused one (row by row, wrapping) whose text contains `q`. */
+  const findNext = (q: string): boolean => {
+    const needle = q.toLowerCase();
+    const n = visibleCols.length;
+    if (!n || !total) return false;
+    const start = sel ? sel.focus.r * n + sel.focus.c + 1 : 0;
+    for (let k = 0; k < total * n; k++) {
+      const i = (start + k) % (total * n);
+      const r = Math.floor(i / n);
+      const vc = i % n;
+      const v = cellValue(r, visibleCols[vc]).v;
+      if ((isNull(v) ? 'null' : displayValue(v)).toLowerCase().includes(needle)) {
+        focusGridCell(r, vc);
+        return true;
+      }
+    }
+    return false;
+  };
+  const orderedToolColumns = () => order.map((i) => toolColumns[i]).filter(Boolean);
+  const applyShown = (shown: string[]) => {
+    if (!shown.length) return setHidden(new Set());
+    setHidden(new Set(p.columns.map((c) => c.name).filter((x) => !shown.includes(x))));
+    // Show them in the order they were picked, the rest after.
+    const idx = shown.map(colIndex).filter((i) => i >= 0);
+    setOrder([...idx, ...order.filter((o) => !idx.includes(o))]);
   };
 
   // ------------------------------------------------------------ mouse
@@ -750,6 +834,8 @@ export function DataGrid(p: GridProps) {
           onClose={() => setEditing(null)}
         />
       )}
+      {tool === 'jump' && <JumpPalette columns={toolColumns} rowCount={total} onColumn={jumpToColumn} onRow={jumpToRow} onFind={findNext} onClose={() => setTool(null)} />}
+      {tool === 'columns' && <ColumnsPicker columns={orderedToolColumns()} onApply={applyShown} onClose={() => setTool(null)} />}
       {menu && (
         <ContextMenu
           key={menu.n}

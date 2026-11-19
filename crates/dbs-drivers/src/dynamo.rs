@@ -291,7 +291,7 @@ fn items_to_result(items: &[Item], first: &[String], table: Option<&str>, key_na
                 1 => tags.into_iter().next().unwrap_or("S").to_string(),
                 _ => "mixed".to_string(),
             };
-            ColumnMeta { name: n.clone(), type_name, nullable: Some(!key_names.contains(n)), table: table.map(String::from) }
+            ColumnMeta { name: n.clone(), type_name, nullable: Some(!key_names.contains(n)), table: table.map(String::from), ..Default::default() }
         })
         .collect();
     let rows = items

@@ -1569,5 +1569,36 @@
     "trxRows_other": "{{formatted}} Zeilen geändert",
     "undoWriteRows_one": "Rollt {{formatted}} geänderte Zeile zurück",
     "undoWriteRows_other": "Rollt {{formatted}} geänderte Zeilen zurück"
+  },
+  "gridTools": {
+    "jumpTitle": "Springen zu",
+    "jumpPlaceholder": "Spalte, Zeilennummer oder Wert",
+    "columnsCount": "Spalten ({{n}})",
+    "hidden": "Ausgeblendet",
+    "goToRow": "Zu Zeile {{n}}",
+    "findValue": "„{{q}}“ in geladenen Zeilen suchen",
+    "noMatch": "Kein Treffer",
+    "noColumns": "Keine passenden Spalten",
+    "columnsTitle": "Spalten auswählen",
+    "addColumn": "Spalte hinzufügen",
+    "shownColumns": "Angezeigte Spalten",
+    "removeColumn": "{{name}} entfernen",
+    "allColumns": "Alle Spalten werden angezeigt",
+    "clear": "Leeren",
+    "apply": "Anwenden"
+  },
+  "resultEdit": {
+    "editable": "Bearbeitbar · {{table}}",
+    "editableHint": "Zum Bearbeiten doppelt auf eine Zelle klicken. Änderungen aktualisieren {{table}} über den Primärschlüssel.",
+    "readOnly": "Schreibgeschützt",
+    "why": {
+      "connection": "Diese Verbindung ist schreibgeschützt.",
+      "noTable": "Diese Spalten stammen nicht direkt aus einer Tabelle.",
+      "manyTables": "Die Spalten stammen aus mehreren Tabellen. Bearbeiten Sie jeweils eine Tabelle.",
+      "noKey": "Der Primärschlüssel der Tabelle fehlt im Ergebnis. Wählen Sie ihn mit aus, um zu bearbeiten.",
+      "loading": "Tabelle wird geprüft…",
+      "streaming": "Zeilen werden noch geladen.",
+      "searching": "Suche leeren, um zu bearbeiten."
+    }
   }
 }

@@ -102,7 +102,10 @@ export interface ColumnMeta {
   name: string;
   type_name: string;
   nullable?: boolean | null;
+  /** Source table, schema and column (its real name when aliased), when the engine reports them. */
   table?: string | null;
+  schema?: string | null;
+  column?: string | null;
 }
 
 export interface ResultSet {

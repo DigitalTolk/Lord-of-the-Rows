@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fmtNumber } from '../lib/format';
 import { confirmDecision } from '../components/confirm';
-import { DataGrid } from '../components/DataGrid';
+import { DataGrid, type GridHandle } from '../components/DataGrid';
 import { FilterBar } from '../components/FilterBar';
 import { RowDetailPanel } from '../components/RowDetailPanel';
 import { IndexList, TableBottomBar, type RowCount, type TableMode } from '../components/TableBottomBar';
@@ -46,6 +46,7 @@ export function TableView({ tab }: { tab: Tab }) {
   const [error, setError] = useState<string | null>(null);
   const [detailW, setDetailW] = useState(() => detailWidth(settings));
   const hist = useRef(new History<StagedState>());
+  const grid = useRef<GridHandle>(null);
   const countKey = useRef<string | null>(null);
   const [mode, setMode] = useState<TableMode>('data');
   const isKeyValue = s?.config.engine === 'redis';
@@ -389,6 +390,12 @@ export function TableView({ tab }: { tab: Tab }) {
           <span className="ms-2 rounded-full bg-warn/15 px-2 py-0.5 text-[0.85rem] font-medium text-warn" aria-live="polite" title={`${t('tableWs.pendingCommit')} (${displayCombo('Mod+S')})`}>{t('grid.pending', { count: pending, formatted: fmtNumber(pending) })}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
+          {mode === 'data' && rs && (
+            <>
+              <button className="icon-btn" title={`${t('gridTools.jumpTitle')} (${displayCombo('Mod+J')})`} aria-label={t('gridTools.jumpTitle')} onClick={() => grid.current?.openJump()}><Icon name="search" size={15} /></button>
+              <button className="icon-btn" title={t('gridTools.columnsTitle')} aria-label={t('gridTools.columnsTitle')} onClick={() => grid.current?.openColumns()}><Icon name="columns" size={15} /></button>
+            </>
+          )}
           <button className={`icon-btn ${ws.filterOpen ? 'bg-accent/15 text-accent' : ''}`} title={`${t('tableWs.toggleFilter')} (${displayCombo('Mod+F')})`} aria-label={t('grid.filterAdd')} aria-pressed={ws.filterOpen} onClick={() => wsApi.toggleFilterBar(tab.id)}><Icon name="filter" size={15} /></button>
         </div>
       </div>
@@ -415,6 +422,7 @@ export function TableView({ tab }: { tab: Tab }) {
         <div className="flex min-h-0 flex-1">
           <div className={`flex min-h-0 min-w-0 flex-1 flex-col transition-opacity duration-150 ${loading ? 'opacity-50' : ''} ${flash ? 'grid-refresh-flash' : ''}`} aria-busy={loading}>
             <DataGrid
+              gridRef={grid}
               columns={columns}
               rows={rs.rows}
               staged={staged}
