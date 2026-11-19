@@ -207,6 +207,20 @@ fn frac(us: u32) -> String {
     }
 }
 
+/// Result column metadata, with the source table and column when the server reports them
+/// (empty for expressions), so a query result from one table can be edited in place.
+fn column_meta(c: &mysql_async::Column) -> ColumnMeta {
+    let opt = |s: std::borrow::Cow<'_, str>| Some(s.into_owned()).filter(|s| !s.is_empty());
+    ColumnMeta {
+        name: c.name_str().into_owned(),
+        type_name: type_name(c),
+        nullable: Some(!c.flags().contains(ColumnFlags::NOT_NULL_FLAG)),
+        table: opt(c.org_table_str()),
+        schema: opt(c.schema_str()),
+        column: opt(c.org_name_str()),
+    }
+}
+
 fn type_name(c: &mysql_async::Column) -> String {
     format!("{:?}", c.column_type()).trim_start_matches("MYSQL_TYPE_").to_ascii_lowercase()
 }
@@ -353,19 +367,7 @@ impl MySqlConnection {
                     rows.push(vals);
                 }
                 let affected = res.affected_rows();
-                let result = (!cols.is_empty()).then(|| ResultSet {
-                    columns: cols
-                        .iter()
-                        .map(|c| ColumnMeta {
-                            name: c.name_str().into_owned(),
-                            type_name: type_name(c),
-                            nullable: Some(!c.flags().contains(ColumnFlags::NOT_NULL_FLAG)),
-                            table: Some(c.org_table_str().into_owned()).filter(|s| !s.is_empty()),
-                        })
-                        .collect(),
-                    rows,
-                    truncated,
-                });
+                let result = (!cols.is_empty()).then(|| ResultSet { columns: cols.iter().map(column_meta).collect(), rows, truncated });
                 let has_result = result.is_some();
                 out.push(StatementResult {
                     statement_index: idx,
@@ -416,15 +418,7 @@ impl MySqlConnection {
                     sink.end_statement(p).await?;
                 }
                 if !cols.is_empty() {
-                    let meta = cols
-                        .iter()
-                        .map(|c| ColumnMeta {
-                            name: c.name_str().into_owned(),
-                            type_name: type_name(c),
-                            nullable: Some(!c.flags().contains(ColumnFlags::NOT_NULL_FLAG)),
-                            table: Some(c.org_table_str().into_owned()).filter(|s| !s.is_empty()),
-                        })
-                        .collect();
+                    let meta = cols.iter().map(column_meta).collect();
                     sink.begin_result(idx, excerpt(&st.text), meta).await?;
                 }
                 while let Some(mut row) = res.next().await.map_err(|e| label(map_err(e)))? {
@@ -732,6 +726,7 @@ impl DatabaseConnection for MySqlConnection {
                     type_name: type_name(c),
                     nullable: Some(!c.flags().contains(ColumnFlags::NOT_NULL_FLAG)),
                     table: Some(t.table.clone()),
+                    ..Default::default()
                 })
                 .collect(),
             rows,

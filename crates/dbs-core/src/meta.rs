@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Value;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ColumnMeta {
     pub name: String,
     /// Native type name as reported by the server (e.g. `int8`, `varchar(255)`).
@@ -10,6 +10,12 @@ pub struct ColumnMeta {
     pub nullable: Option<bool>,
     /// Source table, when the engine reports it (needed for safe inline editing).
     pub table: Option<String>,
+    /// Schema (database) of the source table, when the engine reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    /// The column's name in its source table (differs from `name` when aliased).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

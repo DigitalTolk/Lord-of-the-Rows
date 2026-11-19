@@ -683,7 +683,7 @@ impl DatabaseConnection for RedisConnection {
                     statement_index: idx,
                     sql_excerpt: excerpt(line),
                     result: Some(ResultSet {
-                        columns: vec![ColumnMeta { name: "result".into(), type_name: "redis".into(), nullable: None, table: None }],
+                        columns: vec![ColumnMeta { name: "result".into(), type_name: "redis".into(), nullable: None, table: None, ..Default::default() }],
                         rows,
                         truncated: false,
                     }),
@@ -706,7 +706,7 @@ impl DatabaseConnection for RedisConnection {
         let db = target.schema.as_deref().map(parse_db).transpose()?.unwrap_or(self.session_db.load(Ordering::Relaxed));
         let cursor = if page.offset == 0 { String::new() } else { page.offset.to_string() };
         let vp = self.read_value(&db_name(db), &target.table, &ValueRequest { cursor, count: page.limit.min(MAX_VALUE_PAGE as u64) as u32 }).await?;
-        let col = |n: &str| ColumnMeta { name: n.into(), type_name: "text".into(), nullable: None, table: None };
+        let col = |n: &str| ColumnMeta { name: n.into(), type_name: "text".into(), nullable: None, table: None, ..Default::default() };
         if let Some(text) = vp.text {
             return Ok(ResultSet { columns: vec![col("value")], rows: vec![vec![Value::Text(text)]], truncated: vp.next.is_some() });
         }

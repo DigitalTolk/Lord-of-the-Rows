@@ -1953,5 +1953,36 @@
     "undoWriteRows_few": "يتراجع عن {{formatted}} صف متغير",
     "undoWriteRows_many": "يتراجع عن {{formatted}} صف متغير",
     "undoWriteRows_other": "يتراجع عن {{formatted}} صف متغير"
+  },
+  "gridTools": {
+    "jumpTitle": "الانتقال إلى",
+    "jumpPlaceholder": "عمود أو رقم صف أو قيمة",
+    "columnsCount": "الأعمدة ({{n}})",
+    "hidden": "مخفي",
+    "goToRow": "الانتقال إلى الصف {{n}}",
+    "findValue": "البحث عن «{{q}}» في الصفوف المحمّلة",
+    "noMatch": "لا توجد نتائج",
+    "noColumns": "لا توجد أعمدة مطابقة",
+    "columnsTitle": "اختيار الأعمدة",
+    "addColumn": "إضافة عمود",
+    "shownColumns": "الأعمدة المعروضة",
+    "removeColumn": "إزالة {{name}}",
+    "allColumns": "جميع الأعمدة معروضة",
+    "clear": "مسح",
+    "apply": "تطبيق"
+  },
+  "resultEdit": {
+    "editable": "قابل للتعديل · {{table}}",
+    "editableHint": "انقر نقرًا مزدوجًا على خلية لتعديلها. تُحدِّث التغييرات {{table}} حسب المفتاح الأساسي.",
+    "readOnly": "للقراءة فقط",
+    "why": {
+      "connection": "هذا الاتصال للقراءة فقط.",
+      "noTable": "هذه الأعمدة لا تأتي مباشرة من جدول.",
+      "manyTables": "الأعمدة تأتي من أكثر من جدول. عدّل جدولًا واحدًا في كل مرة.",
+      "noKey": "المفتاح الأساسي للجدول غير موجود في النتيجة. اختره أيضًا للتعديل.",
+      "loading": "جارٍ فحص الجدول…",
+      "streaming": "لا تزال الصفوف قيد التحميل.",
+      "searching": "امسح البحث للتعديل."
+    }
   }
 }

@@ -310,7 +310,7 @@ mod tests {
     use super::*;
 
     fn col(n: &str) -> ColumnMeta {
-        ColumnMeta { name: n.into(), type_name: "int".into(), nullable: None, table: None }
+        ColumnMeta { name: n.into(), type_name: "int".into(), nullable: None, table: None, ..Default::default() }
     }
 
     async fn drain(mut rx: mpsc::Receiver<StreamEvent>) -> Vec<StreamEvent> {

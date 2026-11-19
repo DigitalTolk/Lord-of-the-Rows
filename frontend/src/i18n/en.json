@@ -1569,5 +1569,36 @@
     "trxRows_other": "{{formatted}} rows changed",
     "undoWriteRows_one": "Rolls back {{formatted}} changed row",
     "undoWriteRows_other": "Rolls back {{formatted}} changed rows"
+  },
+  "gridTools": {
+    "jumpTitle": "Jump to",
+    "jumpPlaceholder": "Column, row number, or value",
+    "columnsCount": "Columns ({{n}})",
+    "hidden": "Hidden",
+    "goToRow": "Go to row {{n}}",
+    "findValue": "Find “{{q}}” in loaded rows",
+    "noMatch": "No match",
+    "noColumns": "No matching columns",
+    "columnsTitle": "Choose columns",
+    "addColumn": "Add a column",
+    "shownColumns": "Shown columns",
+    "removeColumn": "Remove {{name}}",
+    "allColumns": "All columns are shown",
+    "clear": "Clear",
+    "apply": "Apply"
+  },
+  "resultEdit": {
+    "editable": "Editable · {{table}}",
+    "editableHint": "Double-click a cell to edit. Changes update {{table}} by its primary key.",
+    "readOnly": "Read-only",
+    "why": {
+      "connection": "This connection is read-only.",
+      "noTable": "These columns don’t come straight from a table.",
+      "manyTables": "The columns come from more than one table. Edit one table at a time.",
+      "noKey": "The table’s primary key isn’t in the result. Select it too to edit.",
+      "loading": "Checking the table…",
+      "streaming": "Rows are still loading.",
+      "searching": "Clear the search to edit."
+    }
   }
 }

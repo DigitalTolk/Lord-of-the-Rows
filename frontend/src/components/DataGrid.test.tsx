@@ -128,3 +128,35 @@ describe('DataGrid context menu', () => {
     expect(props.onOpenForeignKey).toHaveBeenCalledWith(expect.objectContaining({ ref_table: 'customers' }), [{ t: 'int', v: 1 }]);
   });
 });
+
+describe('DataGrid tools and read-only columns', () => {
+  it('does not edit read-only columns', () => {
+    setup({ readOnlyColumns: ['name'] });
+    fireEvent.doubleClick(cell("O'Brien"));
+    expect(screen.queryByRole('textbox', { name: 'Edit value' })).toBeNull();
+    fireEvent.doubleClick(cell('1'));
+    expect(screen.getByRole('textbox', { name: 'Edit value' })).toBeTruthy();
+  });
+
+  it('Mod+J jumps to a hidden column and shows it again', () => {
+    setup();
+    fireEvent.contextMenu(screen.getAllByRole('columnheader')[1]);
+    fireEvent.click(item('Hide column'));
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['id', 'customer_id']);
+    fireEvent.keyDown(screen.getByRole('grid'), { key: 'j', ctrlKey: true });
+    const input = screen.getByRole('combobox', { name: 'Jump to' });
+    fireEvent.change(input, { target: { value: 'name' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['id', 'name', 'customer_id']);
+    expect(screen.getAllByRole('gridcell', { selected: true }).map((c) => c.textContent)).toEqual(["O'Brien"]);
+  });
+
+  it('finds a value in the loaded rows', () => {
+    setup();
+    fireEvent.keyDown(screen.getByRole('grid'), { key: 'j', ctrlKey: true });
+    const input = screen.getByRole('combobox', { name: 'Jump to' });
+    fireEvent.change(input, { target: { value: 'brien' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getAllByRole('gridcell', { selected: true }).map((c) => c.textContent)).toEqual(["O'Brien"]);
+  });
+});

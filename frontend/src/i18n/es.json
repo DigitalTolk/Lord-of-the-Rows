@@ -1665,5 +1665,36 @@
     "undoWriteRows_one": "Revierte {{formatted}} fila cambiada",
     "undoWriteRows_many": "Revierte {{formatted}} filas cambiadas",
     "undoWriteRows_other": "Revierte {{formatted}} filas cambiadas"
+  },
+  "gridTools": {
+    "jumpTitle": "Ir a",
+    "jumpPlaceholder": "Columna, número de fila o valor",
+    "columnsCount": "Columnas ({{n}})",
+    "hidden": "Oculta",
+    "goToRow": "Ir a la fila {{n}}",
+    "findValue": "Buscar «{{q}}» en las filas cargadas",
+    "noMatch": "Sin coincidencias",
+    "noColumns": "No hay columnas que coincidan",
+    "columnsTitle": "Elegir columnas",
+    "addColumn": "Añadir una columna",
+    "shownColumns": "Columnas visibles",
+    "removeColumn": "Quitar {{name}}",
+    "allColumns": "Se muestran todas las columnas",
+    "clear": "Limpiar",
+    "apply": "Aplicar"
+  },
+  "resultEdit": {
+    "editable": "Editable · {{table}}",
+    "editableHint": "Haz doble clic en una celda para editarla. Los cambios actualizan {{table}} por su clave primaria.",
+    "readOnly": "Solo lectura",
+    "why": {
+      "connection": "Esta conexión es de solo lectura.",
+      "noTable": "Estas columnas no vienen directamente de una tabla.",
+      "manyTables": "Las columnas vienen de más de una tabla. Edita una tabla a la vez.",
+      "noKey": "La clave primaria de la tabla no está en el resultado. Selecciónala también para editar.",
+      "loading": "Comprobando la tabla…",
+      "streaming": "Las filas aún se están cargando.",
+      "searching": "Borra la búsqueda para editar."
+    }
   }
 }

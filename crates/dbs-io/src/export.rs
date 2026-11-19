@@ -302,7 +302,7 @@ mod tests {
     use super::*;
 
     fn cols() -> Vec<ColumnMeta> {
-        ["id", "name"].iter().map(|n| ColumnMeta { name: n.to_string(), type_name: String::new(), nullable: None, table: None }).collect()
+        ["id", "name"].iter().map(|n| ColumnMeta { name: n.to_string(), type_name: String::new(), nullable: None, table: None, ..Default::default() }).collect()
     }
     fn rows() -> Vec<Vec<Value>> {
         vec![
