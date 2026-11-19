@@ -1,6 +1,7 @@
-import { cloneElement, isValidElement, useEffect, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { EnvironmentKind } from '../lib/types';
+import { Icon } from './icons';
 
 /** Modal dialog. `sheet` slides it in from the inline end edge as a full-height side panel. */
 export function Dialog({ title, onClose, children, footer, wide, icon, sheet }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean; icon?: ReactNode; sheet?: boolean }) {
@@ -119,11 +120,35 @@ export function Spinner({ label }: { label?: string }) {
   );
 }
 
+/** An error message that can be selected, and copied with one click. */
 export function ErrorBox({ error }: { error: string | null | undefined }) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    setCopied(false);
+  }, [error]);
   if (!error) return null;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(error);
+      setCopied(true);
+    } catch {
+      /* clipboard unavailable: the text can still be selected */
+    }
+  };
   return (
-    <div role="alert" className="my-2 whitespace-pre-wrap rounded border border-danger/50 bg-danger/10 p-2 text-sm text-danger">
-      {error}
+    <div role="alert" className="group/err my-2 flex items-start gap-2 rounded border border-danger/50 bg-danger/10 p-2 text-sm text-danger">
+      <span className="selectable min-w-0 flex-1 cursor-text whitespace-pre-wrap break-words">{error}</span>
+      <button
+        type="button"
+        className="btn h-6 shrink-0 gap-1 px-1.5 text-xs text-fg"
+        aria-label={t('common.copyError')}
+        title={t('common.copyError')}
+        onClick={() => void copy()}
+      >
+        <Icon name={copied ? 'check' : 'copy'} size={13} />
+        {copied ? t('common.copied') : t('common.copy')}
+      </button>
     </div>
   );
 }

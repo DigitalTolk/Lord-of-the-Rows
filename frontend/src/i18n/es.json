@@ -32,7 +32,9 @@
     "discard": "Descartar",
     "back": "Atrás",
     "next": "Siguiente",
-    "browse": "Examinar…"
+    "browse": "Examinar…",
+    "copyError": "Copiar mensaje de error",
+    "copied": "Copiado"
   },
   "env": {
     "local": "Local",
