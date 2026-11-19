@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { EnvironmentKind } from '../lib/types';
 import { Icon } from './icons';
@@ -198,9 +198,25 @@ export function MenuPopup({ x, y, onClose, className = 'w-48', label, children }
       onClose();
     }
   };
-  const style = x != null && y != null && typeof window !== 'undefined' ? { left: Math.max(0, Math.min(x, window.innerWidth - 220)), top: Math.max(0, Math.min(y, window.innerHeight - 40)) } : undefined;
+  // Placed after measuring: opens upward when there is no room below the pointer, moves left at
+  // the right edge, and scrolls when taller than the window — so the whole menu is always visible.
+  const [pos, setPos] = useState<{ left: number; top: number; maxHeight?: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || x == null || y == null) return;
+    const m = 4;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const left = Math.max(m, x + w > vw - m ? vw - w - m : x);
+    if (h > vh - 2 * m) return setPos({ left, top: m, maxHeight: vh - 2 * m });
+    const top = y + h <= vh - m ? y : y - h >= m ? y - h : vh - h - m;
+    setPos({ left, top });
+  }, [x, y]);
+  const style = x != null && y != null ? (pos ? { left: pos.left, top: pos.top, maxHeight: pos.maxHeight } : { left: x, top: y, visibility: 'hidden' as const }) : undefined;
   return (
-    <div ref={ref} role="menu" aria-label={label} className={`fixed z-50 rounded-lg border border-border bg-raised p-1 shadow-xl ${className}`} style={style} onKeyDown={onKeyDown}>
+    <div ref={ref} role="menu" aria-label={label} className={`fixed z-50 rounded-lg border border-border bg-raised p-1 shadow-xl ${pos?.maxHeight ? 'overflow-auto' : ''} ${className}`} style={style} onKeyDown={onKeyDown}>
       {children}
     </div>
   );

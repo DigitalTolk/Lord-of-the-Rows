@@ -27,7 +27,8 @@ export function ExportHost() {
 }
 
 const keyOf = (t: TableTarget) => `${t.schema ?? ''}\u0000${t.table}`;
-const SETTINGS_KEY = 'export.last';
+/** Saved under `io.` — the backend only accepts settings with known prefixes. */
+export const SETTINGS_KEY = 'io.export';
 
 type Run = { rows: number[]; done: boolean[]; result?: { tables: number; rows: number; paths: string[] }; error?: string; cancelled?: boolean };
 
@@ -73,7 +74,8 @@ export function ExportDialog({ s, req, onClose }: { s: OpenSession; req: ExportR
 
   const start = async () => {
     if (!selected.length) return;
-    void useApp.getState().setSetting(SETTINGS_KEY, o);
+    // Remembering the settings is a convenience: never let it get in the way of the export.
+    useApp.getState().setSetting(SETTINGS_KEY, o).catch(() => undefined);
     const ext = extensionOf(o);
     const picked = oneFile ? await api.pickFile(true, preview[0], [ext.split('.').pop()!]) : await api.pickFolder();
     if (!picked) return;
