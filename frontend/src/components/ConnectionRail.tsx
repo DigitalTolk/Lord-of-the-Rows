@@ -103,6 +103,7 @@ export const useOpenedSchemas = create<{ bySession: Record<string, string[]>; ad
 function SchemaRail({ s }: { s: OpenSession }) {
   const { t } = useTranslation();
   const setActiveSchema = useApp((st) => st.setActiveSchema);
+  const tabs = useApp((st) => st.tabs);
   const opened = useOpenedSchemas((st) => st.bySession[s.session_id]);
   const [menu, setMenu] = useState<{ schema: string; x: number; y: number } | null>(null);
   useEffect(() => {
@@ -131,6 +132,8 @@ function SchemaRail({ s }: { s: OpenSession }) {
         // Key-value databases also show their key count (from INFO keyspace).
         const keys = s.keyspaces?.find((k) => k.name === x)?.keys;
         const keysText = keys == null ? '' : t('redis.keyCount', { count: keys, formatted: fmtNumber(keys) });
+        // Tabs opened for this database (they show only while it is the active one).
+        const nTabs = s.keyspaces ? 0 : tabs.filter((tb) => tb.sessionId === s.session_id && tb.schema === x).length;
         return (
           <button
             key={x}
@@ -147,6 +150,7 @@ function SchemaRail({ s }: { s: OpenSession }) {
             className={`relative flex w-[66px] shrink-0 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1 ${active ? 'bg-raised text-fg shadow-sm ring-1 ring-border' : 'text-muted hover:bg-hover hover:text-fg'}`}
           >
             <Icon name="db" size={22} style={active ? { color: tint } : undefined} />
+            {nTabs > 0 && <span className="absolute end-1.5 top-0.5 min-w-[15px] rounded-full bg-fg px-1 text-[0.6rem] leading-[15px] text-bg tabular-nums" aria-label={t('rail.openTabs', { n: nTabs })}>{nTabs}</span>}
             <span className="line-clamp-2 w-full break-all text-center text-[0.65rem] leading-tight" dir="auto">{x}</span>
             {keys != null && <span className="w-full truncate text-center text-[0.58rem] leading-tight tabular-nums text-muted" aria-hidden>{fmtNumber(keys, { notation: 'compact' })}</span>}
           </button>

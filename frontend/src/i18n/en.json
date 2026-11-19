@@ -710,7 +710,8 @@
     "closeConnection": "Close connection",
     "closeOtherConnections": "Close other connections",
     "openDatabase": "Open",
-    "closeOtherDatabases": "Close other databases"
+    "closeOtherDatabases": "Close other databases",
+    "openTabs": "{{n}} open tabs"
   },
   "welcome": {
     "version": "Version {{version}}",

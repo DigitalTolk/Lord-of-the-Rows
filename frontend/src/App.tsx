@@ -19,7 +19,7 @@ import { applyLanguage, LANGUAGE_SETTING, parseLanguagePref } from './i18n';
 import { applyThemeClasses, cachedThemePref, cacheThemePref, onOsThemeChange, osTheme, parseThemePref, resolveTheme, THEME_SETTING } from './lib/theme';
 import { DEFAULT_KEYS, displayCombo, eventCombo, matches, type KeyAction } from './lib/keys';
 import { currentWindowLabel, persistsWorkspace, setWindowTitle, windowTitle } from './lib/windows';
-import { errMsg, useApp, workspaceSnapshot, type Tab } from './store';
+import { errMsg, tabInView, useApp, workspaceSnapshot, type Tab } from './store';
 import { AuditView } from './views/AuditView';
 import { BackupView } from './views/BackupView';
 import { DashboardView } from './views/DashboardView';
@@ -142,7 +142,7 @@ export default function App() {
       const binding = (a: KeyAction) => (st.settings[`keys.${a}`] as string) ?? DEFAULT_KEYS[a];
       const is = (a: KeyAction) => matches(combo, binding(a));
       const s = st.activeSession ? st.sessions[st.activeSession] : undefined;
-      const tabs = st.tabs.filter((x) => !x.sessionId || x.sessionId === st.activeSession);
+      const tabs = st.tabs.filter((x) => tabInView(x, st));
       const digit = /^Mod\+([1-9])$/.exec(combo);
       if (digit) {
         const ids = Object.keys(st.sessions);
@@ -180,7 +180,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [st, t]);
 
-  const active = st.tabs.find((x) => x.id === st.activeTab && (!x.sessionId || x.sessionId === st.activeSession)) ?? st.tabs.find((x) => !x.sessionId || x.sessionId === st.activeSession);
+  const active = st.tabs.find((x) => x.id === st.activeTab && tabInView(x, st)) ?? st.tabs.find((x) => tabInView(x, st));
   const activeSession = active?.sessionId ? st.sessions[active.sessionId] : st.activeSession ? st.sessions[st.activeSession] : undefined;
   const focus = !!st.settings['workspace.focus'];
 

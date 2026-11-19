@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { displayCombo } from '../lib/keys';
 import { selectTab, useTableWs } from '../lib/tableWorkspace';
-import { errMsg, useApp } from '../store';
+import { errMsg, tabInView, useApp } from '../store';
 import { Icon } from './icons';
 import { SqlPopover } from './SqlPopover';
 
@@ -14,7 +14,7 @@ import { SqlPopover } from './SqlPopover';
  */
 export function PendingChangesBar() {
   const { t } = useTranslation();
-  const activeTab = useApp((s) => s.tabs.find((x) => x.id === s.activeTab && (!x.sessionId || x.sessionId === s.activeSession)));
+  const activeTab = useApp((s) => s.tabs.find((x) => x.id === s.activeTab && tabInView(x, s)));
   const tabId = activeTab?.kind === 'table' ? activeTab.id : undefined;
   const ws = useTableWs(selectTab(tabId));
   const [preview, setPreview] = useState<{ sql: string; loading: boolean; error?: string } | null>(null);

@@ -1,7 +1,7 @@
 import { UpdateButton } from './UpdateButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useApp, type Tab, type TabKind } from '../store';
+import { tabInView, useApp, type Tab, type TabKind } from '../store';
 import { EnvBadge, isContextMenuKey, menuAnchor, MenuPopup } from './ui';
 import { Icon, type IconName } from './icons';
 import { EngineBadge } from './EngineBadge';
@@ -140,7 +140,7 @@ function DetailPanelButton() {
 export function TabBar() {
   const { t } = useTranslation();
   const { tabs: allTabs, activeTab, closeTab, updateTab, moveTab, sessions, activeSession, openTab } = useApp();
-  const tabs = allTabs.filter((x) => !x.sessionId || x.sessionId === activeSession);
+  const tabs = allTabs.filter((x) => tabInView(x, { activeSession, sessions }));
   const drag = useRef<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const wsTabs = useTableWs((w) => w.tabs);
