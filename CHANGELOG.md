@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.9
+- Fix: right-click menus opened near the bottom of the window were cut off. Menus now open upward when there is no room below, stay inside the window at the right edge, and scroll if they are taller than the window.
+- Fix: after exporting, a red "Unhandled … setSetting" message could appear (the dialog's remembered options were saved under a name the app refused). The options are now remembered correctly.
+
 ## 0.2.8
 - Easier on the eyes in dark mode: the SQL editor no longer uses pure red for strings and pure magenta for functions. Keywords, functions, strings, numbers and comments use softer colours (in the light theme too), and the dark theme's text is off-white instead of near-white. Everything keeps at least 5:1 contrast.
 
