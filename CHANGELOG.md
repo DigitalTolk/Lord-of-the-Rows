@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.8
+- Easier on the eyes in dark mode: the SQL editor no longer uses pure red for strings and pure magenta for functions. Keywords, functions, strings, numbers and comments use softer colours (in the light theme too), and the dark theme's text is off-white instead of near-white. Everything keeps at least 5:1 contrast.
+
 ## 0.2.7
 - **Export tables.** Right-click a table (or a database in the rail) → **Export…**, or use the export button in a table's toolbar or "Export tables…" in the command palette. Tick any tables of the connection (a whole database at once), choose a format and where it goes:
   - CSV/TSV: header row, delimiter (comma, semicolon, tab, pipe), NULL as empty / `NULL` / `\N`, quoting, LF or CRLF, line breaks in values to spaces, and protection against spreadsheet formulas. JSON as an array or JSON Lines. SQL with `DROP TABLE IF EXISTS`, `CREATE TABLE` and INSERTs (rows per INSERT). Excel as one workbook with a sheet per table.
