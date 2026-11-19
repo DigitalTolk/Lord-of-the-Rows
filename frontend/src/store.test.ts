@@ -271,11 +271,11 @@ describe('tabs belong to the database they were opened for', () => {
     expect(useApp.getState().tabs.find((t) => t.id === a)?.schema).toBe('prd');
     useApp.setState({ activeTab: a });
 
+    // The other database has no tabs yet: it starts with an empty query tab of its own.
     setActiveSchema('s1', 'stg');
-    expect(visible()).toEqual(['Settings']);
-    expect(useApp.getState().activeTab).not.toBe(a);
-    const b = openTab({ kind: 'query', title: 'B', sessionId: 's1', sql: '' });
-    expect(visible()).toEqual(['Settings', 'B']);
+    expect(visible()).toEqual(['Settings', 'Query']);
+    const b = useApp.getState().activeTab;
+    expect(useApp.getState().tabs.find((t) => t.id === b)).toMatchObject({ kind: 'query', sessionId: 's1', schema: 'stg', sql: '' });
 
     setActiveSchema('s1', 'prd');
     expect(visible()).toEqual(['A', 'Settings']);
@@ -291,7 +291,7 @@ describe('tabs belong to the database they were opened for', () => {
     useApp.getState().updateTab('r', { sessionId: 's1' });
     expect(useApp.getState().tabs[0].schema).toBe('stg');
     useApp.getState().setActiveSchema('s1', 'prd');
-    expect(visible()).toEqual([]);
+    expect(visible()).toEqual(['Query']);
   });
 });
 

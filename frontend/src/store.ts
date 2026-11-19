@@ -350,8 +350,11 @@ export const useApp = create<State>((set, get) => ({
       const view = { ...st, sessions };
       const inView = (tid: string | undefined) => !!tid && st.tabs.some((t) => t.id === tid && tabInView(t, view));
       const back = lastTab[viewKey(sessionId, schema)];
-      const activeTab = inView(back) ? back : inView(st.activeTab) ? st.activeTab : st.tabs.find((t) => t.sessionId === sessionId && tabInView(t, view))?.id;
-      set({ sessions, lastTab, activeTab });
+      const activeTab = inView(back) ? back : st.tabs.find((t) => t.sessionId === sessionId && tabInView(t, view))?.id;
+      // Working in tabs and this database has none yet: start it with an empty query tab.
+      const fresh: Tab | null =
+        !activeTab && st.tabs.some((t) => t.sessionId === sessionId) ? { id: uid(), kind: 'query', title: i18n.t('shell.queryTab'), sessionId, schema, sql: '' } : null;
+      set({ sessions, lastTab, activeTab: fresh?.id ?? activeTab, ...(fresh ? { tabs: [...st.tabs, fresh] } : {}) });
     }
     if (s.keyspaces) return; // key-value: the tree loads lazily
     if (!s.objects[schema]) void get().loadObjects(sessionId, schema);
