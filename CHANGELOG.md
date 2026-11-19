@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5
+- Edit query results in place (MySQL, MariaDB, PostgreSQL). When a result's columns come from one table and its primary key is in the result, double-click a cell to change it and commit with **Commit** or ⌘S. Each change is an update by primary key that only applies if the row still has the value you saw, with the same SQL preview and production confirmation as the table view. Aliased columns write to their real column; expressions, joins and results without the key stay read-only, and the results toolbar says why.
+- **Choose columns**: pick which columns the grid shows (toolbar button or a column header's right-click menu), in the order you pick them; Clear shows them all again.
+- **Jump to** (⌘J / Ctrl+J): type a column name (hidden ones too), a row number, or a value to find in the loaded rows.
+- Security: Wasmtime (plugin runtime) updated to 50.0.2.
+
 ## 0.2.4
 - Connection rail menus (right-click): on a connection, New query, Open database…, Refresh, **Move to new window** (its query and table tabs and the current database go with it), **Open in new window**, Edit connection, **Close connection** and **Close other connections**; on an opened database, Open, New query, Refresh, Copy name, Close and **Close other databases**.
 
