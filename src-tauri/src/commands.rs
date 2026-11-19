@@ -1794,6 +1794,41 @@ pub async fn run_restore(
 pub(crate) mod tests {
     use super::*;
 
+    /// Every setting key the frontend reads or saves must have an accepted prefix; otherwise
+    /// saving it fails at runtime with "unknown setting" (as the export dialog's remembered
+    /// options once did). Scans string literals passed to `setSetting(` / `settings[`, and the
+    /// `*_SETTING(S)_KEY` / `THEME_SETTING` constants.
+    #[test]
+    fn frontend_setting_keys_have_accepted_prefixes() {
+        fn sources(dir: &std::path::Path, out: &mut String) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                let name = p.file_name().unwrap().to_string_lossy().into_owned();
+                if p.is_dir() {
+                    sources(&p, out);
+                } else if (name.ends_with(".ts") || name.ends_with(".tsx")) && !name.contains(".test.") {
+                    out.push_str(&std::fs::read_to_string(&p).unwrap());
+                }
+            }
+        }
+        let mut text = String::new();
+        sources(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../frontend/src"), &mut text);
+        let mut keys = std::collections::BTreeSet::new();
+        for marker in ["setSetting('", "setSetting(\"", "settings['", "settings[\"", "SETTING = '", "SETTINGS_KEY = '"] {
+            for (i, _) in text.match_indices(marker) {
+                let rest = &text[i + marker.len()..];
+                let key: String = rest.chars().take_while(|c| !matches!(c, '\'' | '"' | '`' | '$')).collect();
+                if key.contains('.') {
+                    keys.insert(key);
+                }
+            }
+        }
+        assert!(keys.len() > 10, "found too few keys: {keys:?}");
+        assert!(keys.contains("io.export") && keys.contains("appearance.theme"), "{keys:?}");
+        let bad: Vec<_> = keys.iter().filter(|k| !SETTING_PREFIXES.iter().any(|p| k.starts_with(p))).collect();
+        assert!(bad.is_empty(), "settings the backend would refuse: {bad:?}");
+    }
+
     #[test]
     fn url_parsing_splits_password_and_forces_verification() {
         let p = parse_connection_url("postgresql://bob:p%40ss@db.example.com:6543/app?sslmode=require".into()).unwrap();
