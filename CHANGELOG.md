@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.6
+- Tabs belong to the database they were opened for. Query and table tabs show only while that database is selected, so a query written for one database is never shown, or run, against another. Switching database goes back to the tab you last used there (or opens an empty query tab if it has none), and each database in the rail shows how many tabs it has open.
+
 ## 0.2.5
 - Edit query results in place (MySQL, MariaDB, PostgreSQL). When a result's columns come from one table and its primary key is in the result, double-click a cell to change it and commit with **Commit** or ⌘S. Each change is an update by primary key that only applies if the row still has the value you saw, with the same SQL preview and production confirmation as the table view. Aliased columns write to their real column; expressions, joins and results without the key stay read-only, and the results toolbar says why.
 - **Choose columns**: pick which columns the grid shows (toolbar button or a column header's right-click menu), in the order you pick them; Clear shows them all again.
