@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.7
+- **Export tables.** Right-click a table (or a database in the rail) → **Export…**, or use the export button in a table's toolbar or "Export tables…" in the command palette. Tick any tables of the connection (a whole database at once), choose a format and where it goes:
+  - CSV/TSV: header row, delimiter (comma, semicolon, tab, pipe), NULL as empty / `NULL` / `\N`, quoting, LF or CRLF, line breaks in values to spaces, and protection against spreadsheet formulas. JSON as an array or JSON Lines. SQL with `DROP TABLE IF EXISTS`, `CREATE TABLE` and INSERTs (rows per INSERT). Excel as one workbook with a sheet per table.
+  - One file, or a file per table in a folder, named from a pattern (`{table}`, `{schema}`, `{database}`, `{date}`, `{time}`) with a live preview; gzip; existing files are kept unless you choose to replace them. From a filtered table: only the matching rows.
+  - Progress per table, Cancel at any time; your last settings are remembered.
+- Fix: exporting a large table could repeat or skip rows (the first 5,000 were read unordered).
+
 ## 0.2.6
 - Tabs belong to the database they were opened for. Query and table tabs show only while that database is selected, so a query written for one database is never shown, or run, against another. Switching database goes back to the tab you last used there (or opens an empty query tab if it has none), and each database in the rail shows how many tabs it has open.
 
