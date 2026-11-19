@@ -6,6 +6,7 @@
   - One file, or a file per table in a folder, named from a pattern (`{table}`, `{schema}`, `{database}`, `{date}`, `{time}`) with a live preview; gzip; existing files are kept unless you choose to replace them. From a filtered table: only the matching rows.
   - Progress per table, Cancel at any time; your last settings are remembered.
 - Fix: exporting a large table could repeat or skip rows (the first 5,000 were read unordered).
+- Error messages can be selected and copied: each error box has a **Copy** button.
 
 ## 0.2.6
 - Tabs belong to the database they were opened for. Query and table tabs show only while that database is selected, so a query written for one database is never shown, or run, against another. Switching database goes back to the tab you last used there (or opens an empty query tab if it has none), and each database in the rail shows how many tabs it has open.
