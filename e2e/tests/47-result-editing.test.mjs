@@ -3,7 +3,7 @@
 // commit changes the table. Then Jump to (Mod+J) finds a column.
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { clickText, fill, launch, pageText, resultsText, runSql, screenshot, sleep, until, waitText } from '../lib.mjs';
+import { clickText, fill, launch, pageText, screenshot, sleep, until, waitText } from '../lib.mjs';
 
 let b;
 before(async () => {
@@ -46,6 +46,38 @@ async function cellEvent(type, rowText, col) {
   await sleep(200);
 }
 
+// Earlier test files leave many query tabs behind, so every step is pinned to the tab this test
+// opens (its id), not to "the first Run all button" on the page.
+let tabPanel;
+const panelText = () => b.execute((id) => document.getElementById(id)?.innerText ?? '', tabPanel);
+const resultsText = panelText;
+
+/** Put `sql` in this test's editor and run it; retries the click until a new run has finished. */
+async function runSql(_b, sql) {
+  await until(
+    () =>
+      b.execute(
+        (id, sql) => {
+          const node = document.getElementById(id)?.querySelector('.monaco-editor');
+          const ed = node && globalThis.__monaco?.editor.getEditors().find((e) => e.getContainerDomNode().contains(node) || node.contains(e.getContainerDomNode()));
+          if (!ed) return false;
+          ed.setValue(sql);
+          return true;
+        },
+        tabPanel,
+        sql,
+      ),
+    'set sql',
+  );
+  const runs = () => b.execute((id) => document.getElementById(id)?.querySelector('[role=tablist] button:nth-child(2)')?.innerText ?? '', tabPanel);
+  const before = await runs();
+  await until(async () => {
+    await b.execute((id) => [...(document.getElementById(id)?.querySelectorAll('button') ?? [])].find((x) => x.innerText.trim() === 'Run all' && !x.disabled)?.click(), tabPanel);
+    await sleep(1500);
+    return (await runs()) !== before || !(await panelText()).includes('Run a query to see results');
+  }, 'query ran', 20000);
+}
+
 const editorOpen = () => b.execute(() => !!document.querySelector('[role=tabpanel]:not([hidden]) input[aria-label="Edit value"]'));
 
 async function editCell(rowText, col, value) {
@@ -66,11 +98,11 @@ describe('query result editing', () => {
 
       const before = await b.execute(() => [...document.querySelectorAll('[role=tabpanel]')].map((p) => p.id));
       await b.execute(() => document.querySelector('button[aria-label="New SQL query"]')?.click());
-      await until(
+      tabPanel = await until(
         () =>
           b.execute((ids) => {
             const p = document.querySelector('[role=tabpanel]:not([hidden])');
-            return !!(p && !ids.includes(p.id) && p.querySelector('.monaco-editor'));
+            return p && !ids.includes(p.id) && p.querySelector('.monaco-editor') ? p.id : false;
           }, before),
         'new query tab',
       );
@@ -87,7 +119,7 @@ describe('query result editing', () => {
 
       await editCell('alpha', 'label', 'renamed');
       await until(async () => (await resultsText(b)).includes('1 pending change'), 'pending change');
-      await b.execute(() => [...document.querySelectorAll('[role=tabpanel]:not([hidden]) [role=group] button')].find((x) => x.innerText.trim() === 'Commit')?.click());
+      await b.execute((id) => [...(document.getElementById(id)?.querySelectorAll('[role=group] button') ?? [])].find((x) => x.innerText.trim() === 'Commit')?.click(), tabPanel);
       await waitText(b, 'Committed 1 row');
       await until(async () => !(await resultsText(b)).includes('pending change'), 'pending cleared');
 
