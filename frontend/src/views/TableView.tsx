@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { fmtNumber } from '../lib/format';
 import { confirmDecision } from '../components/confirm';
 import { DataGrid, type GridHandle } from '../components/DataGrid';
+import { openExport } from '../components/ExportDialog';
 import { FilterBar } from '../components/FilterBar';
 import { RowDetailPanel } from '../components/RowDetailPanel';
 import { IndexList, TableBottomBar, type RowCount, type TableMode } from '../components/TableBottomBar';
@@ -396,6 +397,7 @@ export function TableView({ tab }: { tab: Tab }) {
               <button className="icon-btn" title={t('gridTools.columnsTitle')} aria-label={t('gridTools.columnsTitle')} onClick={() => grid.current?.openColumns()}><Icon name="columns" size={15} /></button>
             </>
           )}
+          <button className="icon-btn" title={t('tree.export')} aria-label={t('tree.export')} disabled={!s} onClick={() => s && openExport({ sessionId: s.session_id, tables: [target], filters: applied })}><Icon name="upload" size={15} /></button>
           <button className={`icon-btn ${ws.filterOpen ? 'bg-accent/15 text-accent' : ''}`} title={`${t('tableWs.toggleFilter')} (${displayCombo('Mod+F')})`} aria-label={t('grid.filterAdd')} aria-pressed={ws.filterOpen} onClick={() => wsApi.toggleFilterBar(tab.id)}><Icon name="filter" size={15} /></button>
         </div>
       </div>

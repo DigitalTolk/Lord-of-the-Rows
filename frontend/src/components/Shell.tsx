@@ -16,6 +16,7 @@ import { StatusPill } from './StatusPill';
 import { useTableWs } from '../lib/tableWorkspace';
 import { DETAIL_SHORTCUT, setDetailPanel } from '../lib/detailPanel';
 import { openDatabasePicker } from './OpenDatabaseDialog';
+import { openExport } from './ExportDialog';
 import { openImportDialog } from './ImportConnectionsDialog';
 import { accessCommands } from '../lib/accessStore';
 import { ActivityIndicator } from './Activity';
@@ -322,6 +323,7 @@ export function CommandPalette() {
         { id: 'monitor', label: `${t('monitor.title')} — ${s.config.name}`, run: tool('monitor', t('monitor.title')) },
         { id: 'import', label: `${t('io.importTitle')} — ${s.config.name}`, run: tool('import', t('io.importTitle')) },
         { id: 'backup', label: `${t('backup.title')} — ${s.config.name}`, run: tool('backup', t('backup.title')) },
+        { id: 'export', label: `${t('export.paletteLabel')} — ${s.config.name}`, run: () => openExport({ sessionId: s.session_id, tables: [] }) },
         { id: 'history', label: `${t('query.history')} / ${t('query.snippets')}`, run: tool('history', t('query.history')) },
         { id: 'dash', label: t('shell.dashboards'), run: tool('dashboard', t('shell.dashboards')) },
         { id: 'new-table', label: t('structure.newTable'), run: () => st.openTab({ kind: 'structure', title: t('structure.newTable'), sessionId: s.session_id, target: { schema: s.activeSchema, table: '' } }) },

@@ -106,6 +106,10 @@ export const api = {
   pickCertPath: (kind: 'key' | 'cert' | 'ca') => call<string | null>('pick_cert_path', { kind }),
   pickFile: (save: boolean, defaultName?: string, extensions: string[] = []) =>
     call<T.PickedFile | null>('pick_file', { save, defaultName: defaultName ?? null, extensions }),
+  pickFolder: () => call<T.PickedFile | null>('pick_folder'),
+  /** Export one or many tables (see lib/exportPlan); progress per table arrives on `onProgress`. Cancel with cancelQuery(export_id). */
+  exportTables: (req: import('./exportPlan').ExportTablesRequest, onProgress: (p: T.ExportProgress) => void) =>
+    call<{ tables: number; rows: number; paths: string[] }>('export_tables', { req, onProgress: new Channel<T.ExportProgress>(onProgress) }),
   exportTable: (sessionId: string, target: T.TableTarget, filters: T.FilterCondition[], grant: string, options: T.ExportOptions, gzip: boolean) =>
     call<{ rows: number; path: string }>('export_table', { sessionId, target, filters, grant, options, gzip }),
   /** Write rows already loaded in the UI (e.g. the current grid page) to a file granted by pickFile. */

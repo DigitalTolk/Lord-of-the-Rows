@@ -83,7 +83,7 @@ describe('ConnectionRail menus', () => {
     const list = screen.getByRole('listbox', { name: 'Databases' });
     const reporting = [...list.querySelectorAll('[role=option]')].find((o) => o.textContent === 'reporting')!;
     fireEvent.contextMenu(reporting);
-    expect(items()).toEqual(['Open', 'New query', 'Refresh', 'Copy name', 'Close', 'Close other databases']);
+    expect(items()).toEqual(['Open', 'New query', 'Export…', 'Refresh', 'Copy name', 'Close', 'Close other databases']);
     await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Close other databases' })));
     expect(useOpenedSchemas.getState().bySession.s1).toEqual(['reporting']);
   });

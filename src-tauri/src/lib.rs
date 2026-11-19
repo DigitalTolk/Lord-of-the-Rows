@@ -6,6 +6,7 @@ mod access;
 mod ai;
 mod backup;
 mod commands;
+mod export_tables;
 mod import;
 mod migrate;
 mod plugins;
@@ -187,6 +188,8 @@ pub fn run() {
             commands::pick_file,
             commands::pick_cert_path,
             commands::export_table,
+            export_tables::export_tables,
+            export_tables::pick_folder,
             commands::export_query,
             commands::export_rows,
             commands::import_preview,

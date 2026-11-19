@@ -1091,6 +1091,16 @@ pub struct PickedFile {
     display_path: String,
 }
 
+impl PickedFile {
+    pub(crate) fn new(grant: &str, path: &std::path::Path) -> Self {
+        Self {
+            grant: grant.into(),
+            name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            display_path: path.to_string_lossy().into_owned(),
+        }
+    }
+}
+
 /// Opens a native dialog in the backend. Returns an opaque grant id, or None if cancelled.
 #[tauri::command]
 pub async fn pick_file(
@@ -1165,7 +1175,7 @@ pub struct ExportReport {
 /// Reorder a page's cells to `header` by column name. Schemaless engines
 /// (DynamoDB) can report different attribute sets per page; attributes not in the
 /// first page's header are dropped, missing ones become NULL.
-fn project_rows(header: &[ColumnMeta], cols: Vec<ColumnMeta>, rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
+pub(crate) fn project_rows(header: &[ColumnMeta], cols: Vec<ColumnMeta>, rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
     if cols.len() == header.len() && cols.iter().zip(header).all(|(a, b)| a.name == b.name) {
         return rows;
     }
@@ -1194,14 +1204,14 @@ pub async fn export_table(
         opts.dialect = Some(s.conn.dialect());
     }
     let w = open_writer(&g, gzip)?;
-    let first = s.conn.fetch_table(&target, &PageRequest { offset: 0, limit: 5000, order_by: vec![], filters: filters.clone() }).await?;
+    // Stable paging requires the same order on every page: the primary key when available.
+    let order: Vec<(String, SortDir)> =
+        s.conn.describe_table(&target).await.map(|d| d.primary_key.into_iter().map(|c| (c, SortDir::Asc)).collect()).unwrap_or_default();
+    let first = s.conn.fetch_table(&target, &PageRequest { offset: 0, limit: 5000, order_by: order.clone(), filters: filters.clone() }).await?;
     let mut ex = dbs_io::Exporter::begin(w, &first.columns, opts)?;
     ex.write_rows(&first.rows)?;
     let mut offset = first.rows.len() as u64;
     let mut last = first.rows.len();
-    // Stable paging requires an order; use the primary key when available.
-    let order: Vec<(String, SortDir)> =
-        s.conn.describe_table(&target).await.map(|d| d.primary_key.into_iter().map(|c| (c, SortDir::Asc)).collect()).unwrap_or_default();
     while last == 5000 {
         let page = s.conn.fetch_table(&target, &PageRequest { offset, limit: 5000, order_by: order.clone(), filters: filters.clone() }).await?;
         last = page.rows.len();

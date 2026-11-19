@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { openExport } from './ExportDialog';
 import { useTranslation } from 'react-i18next';
 import { create } from 'zustand';
 import { fmtNumber } from '../lib/format';
@@ -212,6 +213,7 @@ function DatabaseMenuItems({ s, schema, others, onDone }: { s: OpenSession; sche
     <>
       <button role="menuitem" className="menu-item" disabled={s.activeSchema === schema} onClick={run(() => st.setActiveSchema(s.session_id, schema))}>{t('rail.openDatabase')}</button>
       <button role="menuitem" className="menu-item" onClick={run(() => { st.setActiveSchema(s.session_id, schema); st.openTab({ kind: 'query', title: t('shell.queryTab'), sessionId: s.session_id, sql: '' }); })}>{t('query.newTab')}</button>
+      <button role="menuitem" className="menu-item" onClick={run(() => openExport({ sessionId: s.session_id, tables: (s.objects[schema] ?? []).filter((o) => o.kind === 'table').map((o) => ({ schema: o.schema ?? schema, table: o.name })) }))}>{t('tree.export')}</button>
       <button role="menuitem" className="menu-item" onClick={run(() => void st.loadObjects(s.session_id, schema))}>{t('common.refresh')}</button>
       <button role="menuitem" className="menu-item" onClick={run(() => void navigator.clipboard?.writeText(schema).catch(() => undefined))}>{t('tree.copyName')}</button>
       <Sep />
