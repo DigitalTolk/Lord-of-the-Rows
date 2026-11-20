@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.10
+- MySQL / MariaDB: when the server or network drops the connection (idle timeout, laptop sleep, VPN change), the app reconnects by itself instead of failing every query with "Connection to the server is closed". The selected database, read-only mode and init SQL are restored. Read-only queries and the object tree simply run again; writes are never repeated automatically, and if a transaction was open you are told the server rolled it back.
+- Fix: a failed object-tree refresh showed a red "Unhandled … loadObjects" message; it is now a normal error and the tree keeps its contents.
+
 ## 0.2.9
 - Fix: right-click menus opened near the bottom of the window were cut off. Menus now open upward when there is no room below, stay inside the window at the right edge, and scroll if they are taller than the window.
 - Fix: after exporting, a red "Unhandled … setSetting" message could appear (the dialog's remembered options were saved under a name the app refused). The options are now remembered correctly.
