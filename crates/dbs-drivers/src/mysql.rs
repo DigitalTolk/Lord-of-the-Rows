@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -15,8 +17,24 @@ pub struct MySqlDriver;
 pub struct MySqlConnection {
     conn: Mutex<Conn>,
     opts: Opts,
-    conn_id: u32,
+    /// Server thread id of `conn` (changes when the connection is re-established).
+    conn_id: AtomicU32,
     engine: Engine,
+    /// What a re-established connection must restore: the selected database, read-only mode,
+    /// and the connection's init SQL.
+    db: StdMutex<Option<String>>,
+    read_only: AtomicBool,
+    init_sql: Option<String>,
+    /// When `conn` was last used; after a while idle it is pinged before use.
+    last_used: StdMutex<Instant>,
+    /// A statement failed because the connection is gone: reconnect before the next one.
+    broken: AtomicBool,
+    /// A transaction is open on `conn` (BEGIN / START TRANSACTION, or staged changes being
+    /// applied). If the connection is lost then, the server rolled it back: say so instead of
+    /// silently carrying on in autocommit.
+    tx: AtomicBool,
+    /// The current streaming run has sent something to the UI (so it can't simply be re-run).
+    streamed: AtomicBool,
     /// Separate connection for Activity (process list, cancel, kill), opened on first use,
     /// so it still works while `conn` is busy — e.g. running the very query to be killed.
     side: Mutex<Option<Conn>>,
@@ -117,13 +135,23 @@ impl DatabaseDriver for MySqlDriver {
             }
             r => r.map_err(map_err)?,
         };
-        let conn_id = conn.id();
-        let me = MySqlConnection { conn: Mutex::new(conn), opts, conn_id, engine: cfg.engine, side: Mutex::new(None) };
-        if cfg.read_only {
-            me.set_read_only(true).await?;
-        }
-        if let Some(init) = &cfg.init_sql {
-            me.conn.lock().await.query_drop(init.as_str()).await.map_err(map_err)?;
+        let me = MySqlConnection {
+            conn_id: AtomicU32::new(conn.id()),
+            conn: Mutex::new(conn),
+            opts,
+            engine: cfg.engine,
+            side: Mutex::new(None),
+            db: StdMutex::new(cfg.database.clone().filter(|d| !d.is_empty())),
+            read_only: AtomicBool::new(cfg.read_only),
+            init_sql: cfg.init_sql.clone().filter(|s| !s.trim().is_empty()),
+            last_used: StdMutex::new(Instant::now()),
+            broken: AtomicBool::new(false),
+            tx: AtomicBool::new(false),
+            streamed: AtomicBool::new(false),
+        };
+        {
+            let mut c = me.conn.lock().await;
+            me.prepare(&mut c).await.map_err(map_err)?;
         }
         Ok(Box::new(me))
     }
@@ -244,11 +272,112 @@ fn to_mysql(v: &Value) -> DbResult<mysql_async::Value> {
     })
 }
 
+/// Idle longer than this and the connection is pinged before it is used: servers and NAT
+/// gateways drop idle connections (wait_timeout, laptop sleep, VPN changes).
+const IDLE_CHECK: Duration = Duration::from_secs(30);
+
+/// Errors that mean the connection itself is gone (as opposed to a failed statement).
+fn is_lost(e: &mysql_async::Error) -> bool {
+    matches!(e, mysql_async::Error::Io(_) | mysql_async::Error::Driver(mysql_async::DriverError::ConnectionClosed))
+}
+
 impl MySqlConnection {
+    /// Session state every connection gets: read-only mode and init SQL (the database is
+    /// chosen in the connect options or restored by `reopen`).
+    async fn prepare(&self, c: &mut Conn) -> Result<(), mysql_async::Error> {
+        if self.read_only.load(Ordering::SeqCst) {
+            c.query_drop("SET SESSION TRANSACTION READ ONLY").await?;
+        }
+        if let Some(init) = &self.init_sql {
+            c.query_drop(init.as_str()).await?;
+        }
+        Ok(())
+    }
+
+    /// The session's connection, re-established first when it was lost (a statement failed
+    /// with a closed connection, or it was idle and no longer answers a ping). The selected
+    /// database, read-only mode and init SQL are restored. If a transaction was open, the
+    /// server has rolled it back: that is reported once, on the new connection.
+    async fn conn(&self) -> DbResult<tokio::sync::MutexGuard<'_, Conn>> {
+        let mut g = self.conn.lock().await;
+        let idle = self.last_used.lock().unwrap().elapsed() >= IDLE_CHECK;
+        let mut lost = self.broken.swap(false, Ordering::SeqCst);
+        if !lost && idle {
+            lost = !matches!(tokio::time::timeout(Duration::from_secs(5), g.ping()).await, Ok(Ok(())));
+        }
+        if lost {
+            let mut opts = OptsBuilder::from_opts(self.opts.clone());
+            if let Some(db) = self.db.lock().unwrap().clone() {
+                opts = opts.db_name(Some(db));
+            }
+            let mut fresh = tokio::time::timeout(Duration::from_secs(15), Conn::new(opts))
+                .await
+                .map_err(|_| DbError::new(ErrorKind::Timeout, "reconnecting to the server timed out"))?
+                .map_err(map_err)?;
+            self.prepare(&mut fresh).await.map_err(map_err)?;
+            self.conn_id.store(fresh.id(), Ordering::SeqCst);
+            let old = std::mem::replace(&mut *g, fresh);
+            drop(old); // the socket is already gone; nothing to say goodbye to
+            tracing::info!("MySQL connection was lost and has been re-established");
+            *self.last_used.lock().unwrap() = Instant::now();
+            if self.tx.swap(false, Ordering::SeqCst) {
+                return Err(DbError::new(
+                    ErrorKind::Connection,
+                    "The connection to the server was lost while a transaction was open, so the server rolled it back. You are connected again; start the transaction again.",
+                ));
+            }
+        }
+        *self.last_used.lock().unwrap() = Instant::now();
+        Ok(g)
+    }
+
+    /// After `r` failed because the connection was lost: true when `sql` only reads (so running
+    /// it again on a new connection is harmless) and no transaction was open.
+    fn retry_after_loss<T>(&self, r: &DbResult<T>, sql: &str) -> bool {
+        matches!(r, Err(e) if e.kind == ErrorKind::Connection)
+            && self.broken.load(Ordering::SeqCst)
+            && !self.tx.load(Ordering::SeqCst)
+            && dbs_safety::classify_script(sql, Dialect::MySql).iter().all(|c| c.risk <= dbs_safety::Risk::Read)
+    }
+
+    /// Map a driver error, remembering when the connection itself is gone.
+    fn fail(&self, e: mysql_async::Error) -> DbError {
+        if is_lost(&e) {
+            self.broken.store(true, Ordering::SeqCst);
+        }
+        map_err(e)
+    }
+
+    /// Keep track of transactions opened and closed by the user's own statements.
+    fn note_statement(&self, sql: &str) {
+        let head: Vec<String> = sql.split_whitespace().take(2).map(|w| w.trim_end_matches(';').to_ascii_uppercase()).collect();
+        match head.first().map(String::as_str) {
+            Some("BEGIN") => self.tx.store(true, Ordering::SeqCst),
+            Some("START") if head.get(1).map(String::as_str) == Some("TRANSACTION") => self.tx.store(true, Ordering::SeqCst),
+            Some("COMMIT" | "ROLLBACK" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE" | "RENAME") => self.tx.store(false, Ordering::SeqCst),
+            Some("USE") => {
+                if let Some(db) = sql.split_whitespace().nth(1) {
+                    let db = db.trim_end_matches(';').trim_matches('`');
+                    if !db.is_empty() {
+                        *self.db.lock().unwrap() = Some(db.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Metadata reads; repeated once on a new connection if the old one was gone.
     async fn text_rows(&self, sql: &str, params: Vec<mysql_async::Value>) -> DbResult<Vec<Vec<Option<String>>>> {
-        let mut c = self.conn.lock().await;
-        let rows: Vec<mysql_async::Row> = c.exec(sql, mysql_async::Params::Positional(params)).await.map_err(map_err)?;
-        Ok(text_of(rows))
+        for attempt in 0..2 {
+            let mut c = self.conn().await?;
+            match c.exec::<mysql_async::Row, _, _>(sql, mysql_async::Params::Positional(params.clone())).await {
+                Ok(rows) => return Ok(text_of(rows)),
+                Err(e) if attempt == 0 && is_lost(&e) && !self.tx.load(Ordering::SeqCst) => self.broken.store(true, Ordering::SeqCst),
+                Err(e) => return Err(self.fail(e)),
+            }
+        }
+        unreachable!("the second attempt returns")
     }
 
     /// Runs `sql` (text protocol) on the Activity side connection, opening it on first use
@@ -323,7 +452,7 @@ impl MySqlConnection {
         if !matches!(e.kind, ErrorKind::Cancelled | ErrorKind::Timeout) {
             return;
         }
-        let mut c = self.conn.lock().await;
+        let mut c = self.conn.lock().await; // as is: never reconnect just to absorb a KILL
         for _ in 0..2 {
             match c.query_drop("DO 0").await {
                 Err(mysql_async::Error::Server(se)) if se.code == 1317 => continue,
@@ -334,19 +463,20 @@ impl MySqlConnection {
 
     async fn kill_query(&self) {
         if let Ok(mut c) = Conn::new(self.opts.clone()).await {
-            let _ = c.query_drop(format!("KILL QUERY {}", self.conn_id)).await;
+            let _ = c.query_drop(format!("KILL QUERY {}", self.conn_id.load(Ordering::SeqCst))).await;
             let _ = c.disconnect().await;
         }
     }
 
     async fn run_script(&self, sql: &str, max_rows: usize) -> DbResult<Vec<StatementResult>> {
         let stmts = dbs_safety::split_statements(sql, Dialect::MySql);
-        let mut c = self.conn.lock().await;
+        let mut c = self.conn().await?;
         let mut out = Vec::new();
         for (idx, st) in stmts.iter().enumerate() {
+            self.note_statement(&st.text);
             let t = Instant::now();
             let mut res = c.query_iter(st.text.as_str()).await.map_err(|e| {
-                let mut e = map_err(e);
+                let mut e = self.fail(e);
                 if stmts.len() > 1 {
                     e.message = format!("statement {} failed: {}", idx + 1, e.message);
                 }
@@ -358,7 +488,7 @@ impl MySqlConnection {
                 let cols: Vec<mysql_async::Column> = columns_meta.as_deref().map(|c| c.to_vec()).unwrap_or_default();
                 let mut rows = Vec::new();
                 let mut truncated = false;
-                while let Some(mut row) = res.next().await.map_err(map_err)? {
+                while let Some(mut row) = res.next().await.map_err(|e| self.fail(e))? {
                     if rows.len() >= max_rows {
                         truncated = true;
                         continue; // drain without storing
@@ -399,8 +529,9 @@ impl MySqlConnection {
     async fn stream_script(&self, sql: &str, sink: &mut RowSink) -> DbResult<()> {
         let stmts = dbs_safety::split_statements(sql, Dialect::MySql);
         let n = stmts.len();
-        let mut c = self.conn.lock().await;
+        let mut c = self.conn().await?;
         for (idx, st) in stmts.iter().enumerate() {
+            self.note_statement(&st.text);
             let label = |mut e: DbError| {
                 if n > 1 && e.kind != ErrorKind::Cancelled {
                     e.message = format!("statement {} failed: {}", idx + 1, e.message);
@@ -408,20 +539,30 @@ impl MySqlConnection {
                 e
             };
             let t = Instant::now();
-            let mut res = c.query_iter(st.text.as_str()).await.map_err(|e| label(map_err(e)))?;
+            let mut res = c.query_iter(st.text.as_str()).await.map_err(|e| label(self.fail(e)))?;
             // A statement (e.g. CALL) may produce several result sets. The summary of
             // the last one is held back so warnings can be attached to it.
             let mut pending: Option<StatementSummary> = None;
             loop {
                 let cols: Vec<mysql_async::Column> = res.columns().as_deref().map(|c| c.to_vec()).unwrap_or_default();
                 if let Some(p) = pending.take() {
-                    sink.end_statement(p).await?;
+                    {
+                        self.streamed.store(true, Ordering::SeqCst);
+                        &mut *sink
+                    }
+                    .end_statement(p)
+                    .await?;
                 }
                 if !cols.is_empty() {
                     let meta = cols.iter().map(column_meta).collect();
-                    sink.begin_result(idx, excerpt(&st.text), meta).await?;
+                    {
+                        self.streamed.store(true, Ordering::SeqCst);
+                        &mut *sink
+                    }
+                    .begin_result(idx, excerpt(&st.text), meta)
+                    .await?;
                 }
-                while let Some(mut row) = res.next().await.map_err(|e| label(map_err(e)))? {
+                while let Some(mut row) = res.next().await.map_err(|e| label(self.fail(e)))? {
                     if sink.is_full() {
                         sink.mark_truncated();
                         continue; // drain without decoding
@@ -447,7 +588,12 @@ impl MySqlConnection {
                         p.notices = w.into_iter().map(|(lvl, code, msg)| format!("{lvl} {code}: {msg}")).collect();
                     }
                 }
-                sink.end_statement(p).await?;
+                {
+                    self.streamed.store(true, Ordering::SeqCst);
+                    &mut *sink
+                }
+                .end_statement(p)
+                .await?;
             }
         }
         Ok(())
@@ -507,7 +653,7 @@ impl DatabaseConnection for MySqlConnection {
     }
 
     async fn ping(&self) -> DbResult<()> {
-        self.conn.lock().await.ping().await.map_err(map_err)
+        self.conn().await?.ping().await.map_err(|e| self.fail(e))
     }
 
     async fn close(&self) -> DbResult<()> {
@@ -688,21 +834,31 @@ impl DatabaseConnection for MySqlConnection {
     }
 
     async fn execute(&self, sql: &str, opts: &ExecOptions, cancel: CancellationToken) -> DbResult<Vec<StatementResult>> {
-        let r = guarded(self.run_script(sql, opts.max_rows), cancel, opts.timeout_ms, || self.kill_query()).await;
+        let mut r = guarded(self.run_script(sql, opts.max_rows), cancel.clone(), opts.timeout_ms, || self.kill_query()).await;
+        // The connection was gone (idle timeout, sleep, VPN change): a read-only script is run
+        // again on the re-established connection. Writes are never repeated automatically.
+        if self.retry_after_loss(&r, sql) {
+            r = guarded(self.run_script(sql, opts.max_rows), cancel, opts.timeout_ms, || self.kill_query()).await;
+        }
         self.after_kill(&r).await;
         r
     }
 
     async fn execute_stream(&self, sql: &str, opts: &ExecOptions, cancel: CancellationToken, mut sink: RowSink) -> DbResult<()> {
-        let r = guarded(self.stream_script(sql, &mut sink), cancel, opts.timeout_ms, || self.kill_query()).await;
+        self.streamed.store(false, Ordering::SeqCst);
+        let mut r = guarded(self.stream_script(sql, &mut sink), cancel.clone(), opts.timeout_ms, || self.kill_query()).await;
+        // As in `execute`, but only while nothing has been shown yet.
+        if !self.streamed.load(Ordering::SeqCst) && self.retry_after_loss(&r, sql) {
+            r = guarded(self.stream_script(sql, &mut sink), cancel, opts.timeout_ms, || self.kill_query()).await;
+        }
         self.after_kill(&r).await;
         r
     }
 
     async fn execute_params(&self, stmt: &GeneratedStatement) -> DbResult<u64> {
         let ps = stmt.params.iter().map(to_mysql).collect::<DbResult<Vec<_>>>()?;
-        let mut c = self.conn.lock().await;
-        c.exec_drop(stmt.sql.as_str(), mysql_async::Params::Positional(ps)).await.map_err(map_err)?;
+        let mut c = self.conn().await?;
+        c.exec_drop(stmt.sql.as_str(), mysql_async::Params::Positional(ps)).await.map_err(|e| self.fail(e))?;
         Ok(c.affected_rows())
     }
 
@@ -711,11 +867,11 @@ impl DatabaseConnection for MySqlConnection {
         t.schema = Some(self.current_db(t.schema.as_deref()).await?);
         let g = build_page_query(Dialect::MySql, &t, page)?;
         let ps = g.params.iter().map(to_mysql).collect::<DbResult<Vec<_>>>()?;
-        let mut c = self.conn.lock().await;
-        let mut res = c.exec_iter(g.sql.as_str(), mysql_async::Params::Positional(ps)).await.map_err(map_err)?;
+        let mut c = self.conn().await?;
+        let mut res = c.exec_iter(g.sql.as_str(), mysql_async::Params::Positional(ps)).await.map_err(|e| self.fail(e))?;
         let cols: Vec<mysql_async::Column> = res.columns().as_deref().map(|c| c.to_vec()).unwrap_or_default();
         let mut rows = Vec::new();
-        while let Some(mut row) = res.next().await.map_err(map_err)? {
+        while let Some(mut row) = res.next().await.map_err(|e| self.fail(e))? {
             rows.push((0..cols.len()).map(|i| decode(row.take(i).unwrap_or(mysql_async::Value::NULL), &cols[i])).collect());
         }
         Ok(ResultSet {
@@ -745,13 +901,19 @@ impl DatabaseConnection for MySqlConnection {
     }
 
     async fn begin(&self) -> DbResult<()> {
-        self.conn.lock().await.query_drop("START TRANSACTION").await.map_err(map_err)
+        self.conn().await?.query_drop("START TRANSACTION").await.map_err(|e| self.fail(e))?;
+        self.tx.store(true, Ordering::SeqCst);
+        Ok(())
     }
     async fn commit(&self) -> DbResult<()> {
-        self.conn.lock().await.query_drop("COMMIT").await.map_err(map_err)
+        let r = self.conn().await?.query_drop("COMMIT").await.map_err(|e| self.fail(e));
+        self.tx.store(false, Ordering::SeqCst);
+        r
     }
     async fn rollback(&self) -> DbResult<()> {
-        self.conn.lock().await.query_drop("ROLLBACK").await.map_err(map_err)
+        let r = self.conn().await?.query_drop("ROLLBACK").await.map_err(|e| self.fail(e));
+        self.tx.store(false, Ordering::SeqCst);
+        r
     }
 
     async fn explain(&self, sql: &str, analyze: bool) -> DbResult<ResultSet> {
@@ -762,12 +924,16 @@ impl DatabaseConnection for MySqlConnection {
 
     async fn use_schema(&self, schema: &str) -> DbResult<()> {
         let q = Dialect::MySql.quote_ident(schema)?;
-        self.conn.lock().await.query_drop(format!("USE {q}")).await.map_err(map_err)
+        self.conn().await?.query_drop(format!("USE {q}")).await.map_err(|e| self.fail(e))?;
+        *self.db.lock().unwrap() = Some(schema.to_string());
+        Ok(())
     }
 
     async fn set_read_only(&self, ro: bool) -> DbResult<()> {
         let s = if ro { "SET SESSION TRANSACTION READ ONLY" } else { "SET SESSION TRANSACTION READ WRITE" };
-        self.conn.lock().await.query_drop(s).await.map_err(map_err)
+        self.conn().await?.query_drop(s).await.map_err(|e| self.fail(e))?;
+        self.read_only.store(ro, Ordering::SeqCst);
+        Ok(())
     }
 
     async fn list_sessions(&self) -> DbResult<Vec<SessionInfo>> {
@@ -831,7 +997,7 @@ impl DatabaseConnection for MySqlConnection {
             }
         }
         let side = side_id.to_string();
-        let own = self.conn_id.to_string();
+        let own = self.conn_id.load(Ordering::SeqCst).to_string();
         Ok(rows
             .into_iter()
             .filter(|r| r[0].as_deref() != Some(side.as_str()))
