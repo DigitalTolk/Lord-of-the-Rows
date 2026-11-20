@@ -21,7 +21,7 @@ vi.mock('./lib/ipc', () => ({
     },
     closeSession: ipc.closeSession,
     useSchema: async () => undefined,
-    listObjects: async () => [],
+    listObjects: vi.fn(async (): Promise<unknown[]> => []),
   },
   IpcError: Error,
 }));
@@ -292,6 +292,19 @@ describe('tabs belong to the database they were opened for', () => {
     expect(useApp.getState().tabs[0].schema).toBe('stg');
     useApp.getState().setActiveSchema('s1', 'prd');
     expect(visible()).toEqual(['Query']);
+  });
+});
+
+describe('loadObjects', () => {
+  it('a failed refresh shows a toast instead of an unhandled error, and keeps the tree', async () => {
+    reset();
+    const sess = { session_id: 's1', config: { name: 'x' }, activeSchema: 'shop', schemas: ['shop'], objects: { shop: [{ kind: 'table', name: 'orders' }] } } as unknown as OpenSession;
+    useApp.setState({ sessions: { s1: sess } });
+    const { api } = await import('./lib/ipc');
+    vi.mocked(api.listObjects).mockRejectedValueOnce(new Error('Connection to the server is closed.'));
+    await expect(useApp.getState().loadObjects('s1', 'shop')).resolves.toBeUndefined();
+    expect(useApp.getState().toasts.map((t) => t.text)).toContain('Connection to the server is closed.');
+    expect(useApp.getState().sessions.s1.objects.shop).toHaveLength(1);
   });
 });
 

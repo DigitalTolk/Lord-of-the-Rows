@@ -328,7 +328,15 @@ export const useApp = create<State>((set, get) => ({
   },
 
   async loadObjects(sessionId, schema) {
-    const objs = await api.listObjects(sessionId, schema);
+    // Many callers refresh the tree in the background: a failure is shown as a toast here
+    // (never an unhandled rejection), and the tree keeps what it had.
+    let objs;
+    try {
+      objs = await api.listObjects(sessionId, schema);
+    } catch (e) {
+      if (get().sessions[sessionId]) get().toast('error', errMsg(e));
+      return;
+    }
     const s = get().sessions[sessionId];
     if (!s) return;
     set({ sessions: { ...get().sessions, [sessionId]: { ...s, objects: { ...s.objects, [schema ?? '']: objs } } } });
