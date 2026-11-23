@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.12
+- Clearer results header when you run several queries: the result tabs have their own row, are named after their table ("1 · customers 20 rows", "2 · orders 0 rows") and Messages is always visible. The selected result's tools are on the row below, with the row count and time on one line.
+- An empty result says "No rows" instead of showing a blank grid.
+
 ## 0.2.11
 - Running several queries: each result gets its own tab (Result 1, Result 2, … with the row count; hover for the statement) next to Messages, instead of a dropdown.
 - Security: updated the `cookie` and `url` libraries (RUSTSEC-2026-0594, RUSTSEC-2026-0592).
