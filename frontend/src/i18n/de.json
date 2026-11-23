@@ -656,7 +656,10 @@
     "exportWithPluginEllipsis": "Mit Plugin exportieren …",
     "exportedWithPlugin_one": "{{formatted}} Zeile mit {{name}} exportiert",
     "exportedWithPlugin_other": "{{formatted}} Zeilen mit {{name}} exportiert",
-    "resultN": "Ergebnis {{n}}"
+    "resultN": "Ergebnis {{n}}",
+    "rowCount_one": "{{formatted}} Zeile",
+    "rowCount_other": "{{formatted}} Zeilen",
+    "noRows": "Keine Zeilen"
   },
   "chart": {
     "type": "Diagrammtyp",

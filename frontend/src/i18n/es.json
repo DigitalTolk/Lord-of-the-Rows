@@ -678,7 +678,11 @@
     "exportedWithPlugin_one": "Se exportó {{formatted}} fila con {{name}}",
     "exportedWithPlugin_many": "Se exportaron {{formatted}} filas con {{name}}",
     "exportedWithPlugin_other": "Se exportaron {{formatted}} filas con {{name}}",
-    "resultN": "Resultado {{n}}"
+    "resultN": "Resultado {{n}}",
+    "rowCount_one": "{{formatted}} fila",
+    "rowCount_other": "{{formatted}} filas",
+    "noRows": "Sin filas",
+    "rowCount_many": "{{formatted}} filas"
   },
   "chart": {
     "type": "Tipo de gráfico",

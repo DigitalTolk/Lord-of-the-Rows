@@ -10,6 +10,7 @@ import { DataGrid, type GridHandle } from './DataGrid';
 import { Icon } from './icons';
 import { SqlPopover } from './SqlPopover';
 import { useResultEdit } from './useResultEdit';
+import { resultSource } from '../lib/resultEdit';
 import { RowDetailPanel } from './RowDetailPanel';
 import { DETAIL_SHORTCUT, detailWidth } from '../lib/detailPanel';
 import { emptyStaged } from '../lib/changes';
@@ -126,34 +127,43 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
 
   return (
     <div className="flex h-full min-h-0 flex-col" onKeyDown={onKeyDown}>
-      <div className="flex h-[32px] shrink-0 items-center gap-1 border-b border-border bg-panel px-2">
-        {/* One tab per result set (several statements → Result 1, Result 2, …), then Messages. */}
-        <div role="tablist" aria-label={t('results.title')} className="flex min-w-0 shrink items-center gap-0.5 overflow-x-auto">
-          {(withRows.length ? withRows : [null]).map((r, i) => {
-            const on = tab === 'results' && (withRows.length === 0 || i === Math.min(idx, withRows.length - 1));
-            const label = withRows.length > 1 ? t('results.resultN', { n: i + 1 }) : t('results.title');
-            return (
-              <button
-                key={i}
-                role="tab"
-                aria-selected={on}
-                title={r ? `${t('query.statement', { n: r.statement_index + 1 })}: ${r.sql_excerpt}` : undefined}
-                className={`btn btn-ghost shrink-0 gap-1 ${on ? 'font-semibold' : ''}`}
-                onClick={() => {
-                  setIdx(i);
-                  setTab('results');
-                }}
-              >
-                {label}
-                {withRows.length > 1 && r?.result && <span className="text-xs font-normal tabular-nums text-muted">{fmtNumber(r.result.rows.length)}</span>}
-              </button>
-            );
-          })}
-          <button role="tab" aria-selected={tab === 'messages'} className={`btn btn-ghost shrink-0 ${tab === 'messages' ? 'font-semibold' : ''}`} onClick={() => setTab('messages')}>{t('query.messages')} ({allMessages.length})</button>
-        </div>
-        {tab === 'results' && rs && (
-          <>
-            <div className="seg ms-2" role="radiogroup" aria-label={t('results.view')}>
+      {/* Tabs on their own row: a tab per result set (named after its table, with its row count), then Messages. */}
+      <div role="tablist" aria-label={t('results.title')} className="no-scrollbar flex h-[30px] shrink-0 items-end gap-0.5 overflow-x-auto border-b border-border bg-panel px-2">
+        {(withRows.length ? withRows : [null]).map((r, i) => {
+          const on = tab === 'results' && (withRows.length === 0 || i === Math.min(idx, withRows.length - 1));
+          const name = r ? resultName(r) : null;
+          const label = withRows.length > 1 ? (name ? `${i + 1} · ${name}` : t('results.resultN', { n: i + 1 })) : t('results.title');
+          const n = r?.result?.rows.length;
+          return (
+            <button
+              key={i}
+              role="tab"
+              aria-selected={on}
+              title={r ? `${t('query.statement', { n: r.statement_index + 1 })}: ${r.sql_excerpt}` : undefined}
+              className={`-mb-px flex h-[29px] max-w-[260px] shrink-0 items-center gap-1.5 border-b-2 px-2.5 text-[0.92rem] ${on ? 'border-accent font-semibold text-fg' : 'border-transparent text-muted hover:text-fg'}`}
+              onClick={() => {
+                setIdx(i);
+                setTab('results');
+              }}
+            >
+              <span className="truncate">{label}</span>
+              {withRows.length > 1 && n != null && <span className="shrink-0 text-xs font-normal tabular-nums text-muted">{t('results.rowCount', { count: n, formatted: fmtNumber(n) })}</span>}
+            </button>
+          );
+        })}
+        <button
+          role="tab"
+          aria-selected={tab === 'messages'}
+          className={`-mb-px flex h-[29px] shrink-0 items-center gap-1.5 border-b-2 px-2.5 text-[0.92rem] ${tab === 'messages' ? 'border-accent font-semibold text-fg' : 'border-transparent text-muted hover:text-fg'}`}
+          onClick={() => setTab('messages')}
+        >
+          {t('query.messages')}
+          <span className="text-xs font-normal tabular-nums text-muted">{allMessages.length}</span>
+        </button>
+      </div>
+      {tab === 'results' && rs && (
+        <div className="flex h-[32px] shrink-0 items-center gap-1.5 border-b border-border bg-panel px-2">
+            <div className="seg" role="radiogroup" aria-label={t('results.view')}>
               {(['grid', 'json', 'text', 'record', 'chart'] as Mode[]).map((m) => (
                 <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>{t(`query.${m}`)}</button>
               ))}
@@ -178,14 +188,14 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
             )}
             {sessionId && edit.reason !== 'connection' && edit.reason !== 'loading' && (
               <span
-                className={`ms-1 flex shrink-0 items-center gap-1 rounded px-1.5 text-xs ${edit.editable ? 'text-ok' : 'text-muted'}`}
+                className={`ms-1 flex min-w-0 shrink items-center gap-1 truncate whitespace-nowrap rounded px-1.5 text-xs ${edit.editable ? 'text-ok' : 'text-muted'}`}
                 title={edit.editable ? t('resultEdit.editableHint', { table: edit.source?.target.table }) : t(`resultEdit.why.${edit.reason}`)}
               >
                 <Icon name={edit.editable ? 'edit' : 'lock'} size={13} />
                 {edit.editable ? t('resultEdit.editable', { table: edit.source?.target.table }) : t('resultEdit.readOnly')}
               </span>
             )}
-            <span className="ms-auto text-xs text-muted" aria-live="polite">
+            <span className="ms-auto shrink-0 whitespace-nowrap ps-2 text-xs text-muted" aria-live="polite">
               {current.streaming ? (
                 <span>{t('query.loadingRows', { count: rs.rows.length, formatted: fmtNumber(rs.rows.length) })}{search ? ` · ${t('query.rowsReturned', { count: filteredRows.length, formatted: fmtNumber(filteredRows.length) })}` : ''}</span>
               ) : (
@@ -193,9 +203,8 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
               )}
               {rs.truncated && <span className="ms-2 text-warn">{t('query.truncated', { count: rs.rows.length, formatted: fmtNumber(rs.rows.length) })}</span>}
             </span>
-          </>
-        )}
-      </div>
+        </div>
+      )}
       {tab === 'results' && edit.pending > 0 && (
         <div role="group" aria-label={t('tableWs.pendingTitle')} className="flex h-[32px] shrink-0 items-center gap-1 border-b border-border bg-warn/10 px-2 text-sm">
           <span className="font-medium text-warn" aria-live="polite">{t('grid.pending', { count: edit.pending, formatted: fmtNumber(edit.pending) })}</span>
@@ -226,7 +235,8 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
         <div className="p-4 text-muted">{results.length ? allMessages.slice(0, 5).join('\n') : t('query.noResults')}</div>
       ) : mode === 'grid' ? (
         <div className="flex min-h-0 flex-1">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            {rs.rows.length === 0 && !current.streaming && <div className="pointer-events-none absolute inset-x-0 top-14 z-10 text-center text-sm text-muted">{t('results.noRows')}</div>}
             <DataGrid
               gridRef={grid}
               columns={rs.columns}
@@ -289,6 +299,14 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
       )}
     </div>
   );
+}
+
+/** A short name for a result tab: its table (from column metadata, else the first FROM). */
+function resultName(r: StatementResult): string | null {
+  const src = r.result ? resultSource(r.result.columns) : null;
+  if (src && typeof src === 'object') return src.target.table;
+  const m = /\bfrom\s+((?:[`"[]?[\w$]+[`"\]]?\s*\.\s*)*[`"[]?[\w$]+[`"\]]?)/i.exec(r.sql_excerpt);
+  return m ? (m[1].replace(/[`"[\]]/g, '').split('.').pop() ?? null) : null;
 }
 
 function textTable(cols: ColumnMeta[], rows: Value[][]): string {
