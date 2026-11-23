@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.11
+- Running several queries: each result gets its own tab (Result 1, Result 2, … with the row count; hover for the statement) next to Messages, instead of a dropdown.
+- Security: updated the `cookie` and `url` libraries (RUSTSEC-2026-0594, RUSTSEC-2026-0592).
+- Query results have the row detail panel too (toolbar button or ⌘/Ctrl+Shift+D): the selected row as a form beside the grid, with field search. Editable results can be edited there; computed columns stay read-only.
+
 ## 0.2.10
 - MySQL / MariaDB: when the server or network drops the connection (idle timeout, laptop sleep, VPN change), the app reconnects by itself instead of failing every query with "Connection to the server is closed". The selected database, read-only mode and init SQL are restored. Read-only queries and the object tree simply run again; writes are never repeated automatically, and if a transaction was open you are told the server rolled it back.
 - Fix: a failed object-tree refresh showed a red "Unhandled … loadObjects" message; it is now a normal error and the tree keeps its contents.
