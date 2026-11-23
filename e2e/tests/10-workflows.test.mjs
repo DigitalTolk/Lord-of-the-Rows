@@ -133,7 +133,11 @@ describe('browsing and querying', () => {
       await runSql(b, "select 1 as a; select 'x' as b; update shop.customers set vip = vip where id <= 3");
       await clickText(b, 'Messages', { selector: '[role=tab]' });
       await until(async () => /3 rows affected/.test(await resultsText(b)), 'rows affected message');
-      await clickText(b, 'Results', { exact: true, selector: '[role=tab]' });
+      // Each statement with rows gets its own result tab.
+      await clickText(b, 'Result 1', { selector: '[role=tab]' });
+      await until(async () => /\ba\b/.test(await resultsText(b)), 'first result');
+      await clickText(b, 'Result 2', { selector: '[role=tab]' });
+      await until(async () => /\bb\b/.test(await resultsText(b)) && /\bx\b/.test(await resultsText(b)), 'second result');
     }));
 
   test('syntax errors are reported with SQLSTATE', () =>

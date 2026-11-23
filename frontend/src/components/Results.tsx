@@ -111,14 +111,31 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
 
   return (
     <div className="flex h-full min-h-0 flex-col" onKeyDown={onKeyDown}>
-      <div className="flex h-[32px] shrink-0 items-center gap-1 border-b border-border bg-panel px-2" role="tablist">
-        <button role="tab" aria-selected={tab === 'results'} className={`btn btn-ghost ${tab === 'results' ? 'font-semibold' : ''}`} onClick={() => setTab('results')}>{t('results.title')}</button>
-        <button role="tab" aria-selected={tab === 'messages'} className={`btn btn-ghost ${tab === 'messages' ? 'font-semibold' : ''}`} onClick={() => setTab('messages')}>{t('query.messages')} ({allMessages.length})</button>
-        {tab === 'results' && withRows.length > 1 && (
-          <select className="input ms-2 w-auto" aria-label={t('results.resultSet')} value={idx} onChange={(e) => setIdx(Number(e.target.value))}>
-            {withRows.map((r, i) => <option key={i} value={i}>{t('query.statement', { n: r.statement_index + 1 })}: {r.sql_excerpt.slice(0, 40)}</option>)}
-          </select>
-        )}
+      <div className="flex h-[32px] shrink-0 items-center gap-1 border-b border-border bg-panel px-2">
+        {/* One tab per result set (several statements → Result 1, Result 2, …), then Messages. */}
+        <div role="tablist" aria-label={t('results.title')} className="flex min-w-0 shrink items-center gap-0.5 overflow-x-auto">
+          {(withRows.length ? withRows : [null]).map((r, i) => {
+            const on = tab === 'results' && (withRows.length === 0 || i === Math.min(idx, withRows.length - 1));
+            const label = withRows.length > 1 ? t('results.resultN', { n: i + 1 }) : t('results.title');
+            return (
+              <button
+                key={i}
+                role="tab"
+                aria-selected={on}
+                title={r ? `${t('query.statement', { n: r.statement_index + 1 })}: ${r.sql_excerpt}` : undefined}
+                className={`btn btn-ghost shrink-0 gap-1 ${on ? 'font-semibold' : ''}`}
+                onClick={() => {
+                  setIdx(i);
+                  setTab('results');
+                }}
+              >
+                {label}
+                {withRows.length > 1 && r?.result && <span className="text-xs font-normal tabular-nums text-muted">{fmtNumber(r.result.rows.length)}</span>}
+              </button>
+            );
+          })}
+          <button role="tab" aria-selected={tab === 'messages'} className={`btn btn-ghost shrink-0 ${tab === 'messages' ? 'font-semibold' : ''}`} onClick={() => setTab('messages')}>{t('query.messages')} ({allMessages.length})</button>
+        </div>
         {tab === 'results' && rs && (
           <>
             <div className="seg ms-2" role="radiogroup" aria-label={t('results.view')}>
