@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../i18n';
 import type { OpenSession } from '../store';
@@ -117,6 +117,25 @@ describe('several statements', () => {
     const one: StatementResult[] = [{ statement_index: 0, sql_excerpt: 'SELECT 1', duration_ms: 1, notices: [], result: { columns: [{ name: 'n', type_name: 'INT' }], rows: [[{ t: 'int', v: 1 }]], truncated: false } }];
     render(<Results results={one} messages={[]} runId="s" />);
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Results', 'Messages (1)']);
+  });
+});
+
+describe('row detail panel', () => {
+  it('shows the selected row as fields; edits stage like the grid; expressions stay read-only', async () => {
+    const results = result([{ name: 'id', table: 'orders', column: 'id' }, { name: 'amount', table: 'orders', column: 'total' }]);
+    results[0].result!.columns.push({ name: 'plus', type_name: 'INT' });
+    results[0].result!.rows[0].push({ t: 'int', v: 6 });
+    render(<Results results={results} messages={[]} runId="d" sessionId="s1" />);
+    await screen.findByText('Editable · orders');
+    fireEvent.click(screen.getByRole('button', { name: 'Row details' }));
+    fireEvent.mouseDown(cell('5'), { button: 0 });
+    const panel = screen.getByRole('complementary', { name: 'Row details' });
+    const amount = within(panel).getByLabelText(/^amount/) as HTMLInputElement;
+    expect(amount.value).toBe('5');
+    expect((within(panel).getByLabelText(/^plus/) as HTMLInputElement).readOnly).toBe(true);
+    fireEvent.change(amount, { target: { value: '8' } });
+    fireEvent.blur(amount);
+    expect(screen.getByText('1 pending change(s)')).toBeTruthy();
   });
 });
 

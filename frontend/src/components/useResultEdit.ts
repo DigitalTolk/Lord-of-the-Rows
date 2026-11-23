@@ -123,5 +123,5 @@ export function useResultEdit({ sessionId, rs, streaming, searching }: { session
     if (n) setStaged(n);
   };
 
-  return { rows, staged, editable, reason, source: source as ResultSource | null, readOnlyColumns: source?.readOnly ?? [], pending, onEdit, onEditMany, onDeleteRows, commit, discard, undo, redo, statements };
+  return { stage: change, rows, staged, editable, reason, source: source as ResultSource | null, readOnlyColumns: source?.readOnly ?? [], pending, onEdit, onEditMany, onDeleteRows, commit, discard, undo, redo, statements };
 }

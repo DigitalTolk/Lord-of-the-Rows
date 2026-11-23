@@ -10,9 +10,15 @@ import { DataGrid, type GridHandle } from './DataGrid';
 import { Icon } from './icons';
 import { SqlPopover } from './SqlPopover';
 import { useResultEdit } from './useResultEdit';
+import { RowDetailPanel } from './RowDetailPanel';
+import { DETAIL_SHORTCUT, detailWidth } from '../lib/detailPanel';
+import { emptyStaged } from '../lib/changes';
 import { displayCombo } from '../lib/keys';
 
 import Chart from './Chart';
+
+/** Shown while the results are filtered by search (edits are paused then). */
+const NO_EDITS = emptyStaged();
 
 type Mode = 'grid' | 'json' | 'text' | 'record' | 'chart';
 
@@ -39,6 +45,10 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
   const [mode, setMode] = useState<Mode>('grid');
   const [search, setSearch] = useState('');
   const [recordRow, setRecordRow] = useState(0);
+  // Row detail panel (as in the table view): the selected row as a form beside the grid.
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selRows, setSelRows] = useState<number[]>([]);
+  const detailW = useApp((s) => detailWidth(s.settings));
   const current = withRows[Math.min(idx, withRows.length - 1)];
   const rs = current?.result;
   const grid = useRef<GridHandle>(null);
@@ -57,6 +67,11 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     const k = e.key.toLowerCase();
+    if (k === 'd' && e.shiftKey) {
+      e.preventDefault();
+      setDetailOpen((o) => !o);
+      return;
+    }
     const inField = e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
     if (k === 's' && edit.pending) {
       e.preventDefault();
@@ -158,6 +173,7 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
               <>
                 <button className="icon-btn" title={`${t('gridTools.jumpTitle')} (${displayCombo('Mod+J')})`} aria-label={t('gridTools.jumpTitle')} onClick={() => grid.current?.openJump()}><Icon name="search" size={15} /></button>
                 <button className="icon-btn" title={t('gridTools.columnsTitle')} aria-label={t('gridTools.columnsTitle')} onClick={() => grid.current?.openColumns()}><Icon name="columns" size={15} /></button>
+                <button className={`icon-btn ${detailOpen ? 'bg-accent/15 text-accent' : ''}`} title={`${t('tableWs.detailTitle')} (${displayCombo(DETAIL_SHORTCUT)})`} aria-label={t('tableWs.detailTitle')} aria-pressed={detailOpen} onClick={() => setDetailOpen((o) => !o)}><Icon name="panelRight" size={15} /></button>
               </>
             )}
             {sessionId && edit.reason !== 'connection' && edit.reason !== 'loading' && (
@@ -209,19 +225,41 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
       ) : !rs ? (
         <div className="p-4 text-muted">{results.length ? allMessages.slice(0, 5).join('\n') : t('query.noResults')}</div>
       ) : mode === 'grid' ? (
-        <DataGrid
-          gridRef={grid}
-          columns={rs.columns}
-          rows={filteredRows}
-          staged={search ? undefined : edit.staged}
-          editable={edit.editable}
-          readOnlyColumns={edit.readOnlyColumns}
-          onEdit={edit.onEdit}
-          onEditMany={edit.onEditMany}
-          onDeleteRows={edit.onDeleteRows}
-          onSelectRows={(r) => r.length && setRecordRow(r[0])}
-          ariaLabel={t('results.gridLabel')}
-        />
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <DataGrid
+              gridRef={grid}
+              columns={rs.columns}
+              rows={filteredRows}
+              staged={search ? undefined : edit.staged}
+              editable={edit.editable}
+              readOnlyColumns={edit.readOnlyColumns}
+              onEdit={edit.onEdit}
+              onEditMany={edit.onEditMany}
+              onDeleteRows={edit.onDeleteRows}
+              onSelectRows={(r) => {
+                setSelRows(r);
+                if (r.length) setRecordRow(r[0]);
+              }}
+              ariaLabel={t('results.gridLabel')}
+            />
+          </div>
+          {detailOpen && (
+            <div style={{ width: detailW }} className="min-h-0 shrink-0">
+              <RowDetailPanel
+                columns={rs.columns}
+                rows={filteredRows}
+                staged={search ? NO_EDITS : edit.staged}
+                selection={selRows}
+                editable={edit.editable}
+                canEditExisting
+                readOnlyColumns={edit.readOnlyColumns}
+                onStage={edit.stage}
+                onClose={() => setDetailOpen(false)}
+              />
+            </div>
+          )}
+        </div>
       ) : mode === 'json' ? (
         <pre dir="ltr" className="min-h-0 flex-1 overflow-auto p-2 font-mono text-xs">
           {JSON.stringify(filteredRows.slice(0, 5000).map((r) => Object.fromEntries(rs.columns.map((c, i) => [c.name, r[i].t === 'null' ? null : displayValue(r[i])]))), null, 2)}
