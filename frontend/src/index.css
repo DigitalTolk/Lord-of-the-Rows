@@ -87,6 +87,9 @@ body {
   -webkit-user-select: none;
 }
 input, textarea, pre, [role='gridcell'], .selectable { user-select: text; -webkit-user-select: text; }
+/* Scrolls (wheel / trackpad) without showing a scrollbar: the result-tab strip. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
 
 :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; border-radius: 4px; }
 :root.hc :focus-visible { outline: 3px solid rgb(var(--accent)); }

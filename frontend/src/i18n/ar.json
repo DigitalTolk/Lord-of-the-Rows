@@ -744,7 +744,14 @@
     "exportedWithPlugin_few": "تم تصدير {{formatted}} صفوف باستخدام {{name}}",
     "exportedWithPlugin_many": "تم تصدير {{formatted}} صفًا باستخدام {{name}}",
     "exportedWithPlugin_other": "تم تصدير {{formatted}} صف باستخدام {{name}}",
-    "resultN": "النتيجة {{n}}"
+    "resultN": "النتيجة {{n}}",
+    "rowCount_zero": "{{formatted}} صف",
+    "rowCount_one": "صف واحد",
+    "rowCount_two": "صفّان",
+    "rowCount_few": "{{formatted}} صفوف",
+    "rowCount_many": "{{formatted}} صفًا",
+    "rowCount_other": "{{formatted}} صف",
+    "noRows": "لا توجد صفوف"
   },
   "chart": {
     "type": "نوع المخطط",

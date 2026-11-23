@@ -656,7 +656,10 @@
     "exportWithPluginEllipsis": "Export with plugin…",
     "exportedWithPlugin_one": "Exported {{count}} row(s) with {{name}}",
     "exportedWithPlugin_other": "Exported {{count}} row(s) with {{name}}",
-    "resultN": "Result {{n}}"
+    "resultN": "Result {{n}}",
+    "rowCount_one": "{{formatted}} row",
+    "rowCount_other": "{{formatted}} rows",
+    "noRows": "No rows"
   },
   "chart": {
     "type": "Chart type",
