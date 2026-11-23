@@ -655,7 +655,8 @@
     "exportWithPlugin": "Mit Plugin exportieren",
     "exportWithPluginEllipsis": "Mit Plugin exportieren …",
     "exportedWithPlugin_one": "{{formatted}} Zeile mit {{name}} exportiert",
-    "exportedWithPlugin_other": "{{formatted}} Zeilen mit {{name}} exportiert"
+    "exportedWithPlugin_other": "{{formatted}} Zeilen mit {{name}} exportiert",
+    "resultN": "Ergebnis {{n}}"
   },
   "chart": {
     "type": "Diagrammtyp",

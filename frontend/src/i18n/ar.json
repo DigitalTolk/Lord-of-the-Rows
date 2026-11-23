@@ -743,7 +743,8 @@
     "exportedWithPlugin_two": "تم تصدير صفين باستخدام {{name}}",
     "exportedWithPlugin_few": "تم تصدير {{formatted}} صفوف باستخدام {{name}}",
     "exportedWithPlugin_many": "تم تصدير {{formatted}} صفًا باستخدام {{name}}",
-    "exportedWithPlugin_other": "تم تصدير {{formatted}} صف باستخدام {{name}}"
+    "exportedWithPlugin_other": "تم تصدير {{formatted}} صف باستخدام {{name}}",
+    "resultN": "النتيجة {{n}}"
   },
   "chart": {
     "type": "نوع المخطط",

@@ -18,6 +18,8 @@ export interface RowDetailPanelProps {
   /** Editing allowed for loaded rows (requires a key); inserted rows are always editable when `editable`. */
   editable: boolean;
   canEditExisting: boolean;
+  /** Fields that can't be edited even when the row can (e.g. expressions in a query result). */
+  readOnlyColumns?: string[];
   onStage: (next: StagedState) => void;
   onClose: () => void;
 }
@@ -57,7 +59,7 @@ export function RowDetailPanel(p: RowDetailPanelProps) {
               key={f.column.name}
               f={f}
               def={p.defs?.find((d) => d.name === f.column.name)}
-              readOnly={!canEdit}
+              readOnly={!canEdit || !!p.readOnlyColumns?.includes(f.column.name)}
               insertedOnly={onlyInserted}
               onSet={(v) => stage(f, v)}
               onDefault={() => p.onStage(stageDefault(p.staged, p.rows, sel, f.column.name))}

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../i18n';
 import type { OpenSession } from '../store';
@@ -92,3 +92,50 @@ describe('editing a query result', () => {
     expect(screen.queryByText(/Editable/)).toBeNull();
   });
 });
+
+describe('several statements', () => {
+  it('shows a tab per result set, the last one first, plus Messages', () => {
+    const rs = (stmt: number, col: string, v: number): StatementResult => ({
+      statement_index: stmt,
+      sql_excerpt: `SELECT ${v} AS ${col}`,
+      duration_ms: 1,
+      notices: [],
+      result: { columns: [{ name: col, type_name: 'INT' }], rows: [[{ t: 'int', v }]], truncated: false },
+    });
+    const results: StatementResult[] = [rs(0, 'a', 1), { statement_index: 1, sql_excerpt: 'UPDATE t SET x = 1', duration_ms: 1, notices: [], rows_affected: 3 }, rs(2, 'b', 2)];
+    render(<Results results={results} messages={[]} runId="m" />);
+    const tabs = screen.getAllByRole('tab').map((t) => t.textContent);
+    expect(tabs).toEqual(['Result 11', 'Result 21', 'Messages (3)']);
+    expect(screen.getByRole('tab', { name: /Result 2/ }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: /Result 2/ }).getAttribute('title')).toBe('Statement 3: SELECT 2 AS b');
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['b']);
+    fireEvent.click(screen.getByRole('tab', { name: /Result 1/ }));
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['a']);
+  });
+
+  it('a single result keeps the plain "Results" tab', () => {
+    const one: StatementResult[] = [{ statement_index: 0, sql_excerpt: 'SELECT 1', duration_ms: 1, notices: [], result: { columns: [{ name: 'n', type_name: 'INT' }], rows: [[{ t: 'int', v: 1 }]], truncated: false } }];
+    render(<Results results={one} messages={[]} runId="s" />);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Results', 'Messages (1)']);
+  });
+});
+
+describe('row detail panel', () => {
+  it('shows the selected row as fields; edits stage like the grid; expressions stay read-only', async () => {
+    const results = result([{ name: 'id', table: 'orders', column: 'id' }, { name: 'amount', table: 'orders', column: 'total' }]);
+    results[0].result!.columns.push({ name: 'plus', type_name: 'INT' });
+    results[0].result!.rows[0].push({ t: 'int', v: 6 });
+    render(<Results results={results} messages={[]} runId="d" sessionId="s1" />);
+    await screen.findByText('Editable · orders');
+    fireEvent.click(screen.getByRole('button', { name: 'Row details' }));
+    fireEvent.mouseDown(cell('5'), { button: 0 });
+    const panel = screen.getByRole('complementary', { name: 'Row details' });
+    const amount = within(panel).getByLabelText(/^amount/) as HTMLInputElement;
+    expect(amount.value).toBe('5');
+    expect((within(panel).getByLabelText(/^plus/) as HTMLInputElement).readOnly).toBe(true);
+    fireEvent.change(amount, { target: { value: '8' } });
+    fireEvent.blur(amount);
+    expect(screen.getByText('1 pending change(s)')).toBeTruthy();
+  });
+});
+
