@@ -659,7 +659,13 @@
     "resultN": "Result {{n}}",
     "rowCount_one": "{{formatted}} row",
     "rowCount_other": "{{formatted}} rows",
-    "noRows": "No rows"
+    "noRows": "No rows",
+    "export": "Export",
+    "exporting": "Exporting…",
+    "exportShownHint_one": "Writes the {{formatted}} row shown to a file",
+    "exportShownHint_other": "Writes the {{formatted}} rows shown to a file",
+    "exportAllHint": "All rows: the result was cut off, so the query runs again and every row is written to the file",
+    "exportNoStatement": "Could not find this statement in the query"
   },
   "chart": {
     "type": "Chart type",

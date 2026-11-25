@@ -35,6 +35,8 @@ export function QueryView({ tab, pane = 0 }: { tab: Tab; pane?: 0 | 1 }) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [runId, setRunId] = useState('');
+  /** The SQL of the last run, so a result can be exported in full by running its statement again. */
+  const [runSql, setRunSql] = useState('');
   const [streamedRows, setStreamedRows] = useState(0);
   const [results, setResults] = useState<StatementResult[]>([]);
   const [messages, setMessages] = useState<string[]>([]);
@@ -107,6 +109,7 @@ export function QueryView({ tab, pane = 0 }: { tab: Tab; pane?: 0 | 1 }) {
         // Rows stream in batches; the grid is usable while they arrive.
         setResults([]);
         setRunId(queryId);
+        setRunSql(sql);
         const r = await runStream({
           start: (onMessage) => api.runSqlStream({ session_id: s.session_id, sql, query_id: queryId, confirm_token: token, typed_confirmation: typed ?? null }, onMessage),
           ack: (seq) => void api.ackQueryStream(queryId, seq).catch(() => undefined),
@@ -195,6 +198,7 @@ export function QueryView({ tab, pane = 0 }: { tab: Tab; pane?: 0 | 1 }) {
         } else throw e;
       }
       setRunId(crypto.randomUUID());
+      setRunSql('');
       setResults([{ statement_index: 0, sql_excerpt: analyze ? 'EXPLAIN ANALYZE' : 'EXPLAIN', result: rs, duration_ms: 0, notices: [] }]);
     } catch (e) {
       setError(errMsg(e));
@@ -352,7 +356,7 @@ export function QueryView({ tab, pane = 0 }: { tab: Tab; pane?: 0 | 1 }) {
           ) : (
             <div className="flex h-full min-h-0 flex-col">
               {error && <div className="shrink-0 p-2"><ErrorBox error={error} /></div>}
-              <div className="min-h-0 flex-1"><Results results={results} messages={messages} runId={runId} sessionId={s?.session_id} /></div>
+              <div className="min-h-0 flex-1"><Results results={results} messages={messages} runId={runId} sessionId={s?.session_id} sql={runSql} /></div>
             </div>
           )}
         </div>

@@ -7,6 +7,7 @@
 use dbs_core::*;
 use dbs_drivers::driver_for;
 use mysql_async::prelude::Queryable;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -41,6 +42,21 @@ fn first_text(r: &[StatementResult]) -> String {
     rows[0][0].to_plain().unwrap_or_default()
 }
 
+/// The query editor's path: `execute_stream`, rows collected from the sink.
+async fn stream(c: &dyn DatabaseConnection, sql: &str) -> (DbResult<()>, Vec<StatementResult>) {
+    let (tx, mut rx) = mpsc::channel(2);
+    let sink = RowSink::new(tx, CancellationToken::new(), 1000);
+    let reader = async {
+        let mut v = Vec::new();
+        while let Some(e) = rx.recv().await {
+            v.push(e);
+        }
+        v
+    };
+    let (r, evs) = tokio::join!(c.execute_stream(sql, &ExecOptions { max_rows: 1000, timeout_ms: None }, CancellationToken::new(), sink), reader);
+    (r, collect_events(evs))
+}
+
 /// Kill the app's connection from outside, as the server does when it drops it.
 async fn drop_connection(c: &dyn DatabaseConnection) {
     let id = first_text(&run(c, "SELECT CONNECTION_ID()").await.unwrap());
@@ -66,6 +82,12 @@ async fn mysql_reconnects_after_the_server_drops_the_connection() {
     let rows = &r[0].result.as_ref().unwrap().rows;
     assert_eq!(rows[0][0].to_plain().as_deref(), Some("dbs_test"));
     assert_eq!(rows[0][1].to_plain().as_deref(), Some("42"));
+
+    // The query editor streams its results: a read right after a drop works there too.
+    drop_connection(&*c).await;
+    let (r, res) = stream(&*c, "SELECT DATABASE() AS db").await;
+    r.expect("streamed read after a dropped connection");
+    assert_eq!(first_text(&res), "dbs_test");
 
     // Metadata (the object tree) survives a drop too.
     drop_connection(&*c).await;

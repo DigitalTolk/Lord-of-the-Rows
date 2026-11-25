@@ -659,7 +659,13 @@
     "resultN": "Ergebnis {{n}}",
     "rowCount_one": "{{formatted}} Zeile",
     "rowCount_other": "{{formatted}} Zeilen",
-    "noRows": "Keine Zeilen"
+    "noRows": "Keine Zeilen",
+    "export": "Exportieren",
+    "exporting": "Exportiere…",
+    "exportShownHint_one": "Schreibt die angezeigte Zeile in eine Datei",
+    "exportShownHint_other": "Schreibt die {{formatted}} angezeigten Zeilen in eine Datei",
+    "exportAllHint": "Alle Zeilen: Das Ergebnis wurde gekürzt, daher wird die Abfrage erneut ausgeführt und jede Zeile in die Datei geschrieben",
+    "exportNoStatement": "Diese Anweisung wurde in der Abfrage nicht gefunden"
   },
   "chart": {
     "type": "Diagrammtyp",

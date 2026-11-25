@@ -751,7 +751,17 @@
     "rowCount_few": "{{formatted}} صفوف",
     "rowCount_many": "{{formatted}} صفًا",
     "rowCount_other": "{{formatted}} صف",
-    "noRows": "لا توجد صفوف"
+    "noRows": "لا توجد صفوف",
+    "export": "تصدير",
+    "exporting": "جارٍ التصدير…",
+    "exportShownHint_zero": "لا توجد صفوف معروضة للكتابة",
+    "exportShownHint_one": "يكتب الصف المعروض في ملف",
+    "exportShownHint_two": "يكتب الصفين المعروضين في ملف",
+    "exportShownHint_few": "يكتب {{formatted}} صفوف معروضة في ملف",
+    "exportShownHint_many": "يكتب {{formatted}} صفًا معروضًا في ملف",
+    "exportShownHint_other": "يكتب {{formatted}} صف معروض في ملف",
+    "exportAllHint": "كل الصفوف: النتيجة مقتطعة، لذا يُعاد تشغيل الاستعلام وتُكتب كل الصفوف في الملف",
+    "exportNoStatement": "تعذّر العثور على هذه العبارة في الاستعلام"
   },
   "chart": {
     "type": "نوع المخطط",

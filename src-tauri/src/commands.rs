@@ -530,10 +530,13 @@ pub fn evaluate_sql(st: State<'_, AppState>, session_id: String, sql: String) ->
     Ok(evaluate_for(&st, &s, &sql))
 }
 
+/// Statement spans of `sql`, as UTF-16 offsets (what the editor's JavaScript strings use).
 #[tauri::command]
 pub fn split_sql(engine: Engine, sql: String) -> R<Vec<(usize, usize)>> {
     check_len(&sql, 50 * 1024 * 1024, "SQL")?;
-    Ok(dbs_safety::split_statements(&sql, Dialect::from(engine)).into_iter().map(|s| (s.start, s.end)).collect())
+    // The lexer works in bytes; the editor slices JavaScript strings (UTF-16 units).
+    let utf16 = |byte: usize| sql.get(..byte).map_or(0, |p| p.encode_utf16().count());
+    Ok(dbs_safety::split_statements(&sql, Dialect::from(engine)).into_iter().map(|s| (utf16(s.start), utf16(s.end))).collect())
 }
 
 #[derive(Deserialize)]
@@ -1793,6 +1796,18 @@ pub async fn run_restore(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// The editor slices statements out of its text with these offsets, and JavaScript strings
+    /// count UTF-16 units, not bytes: non-ASCII text before a statement must not shift it.
+    #[test]
+    fn split_sql_offsets_are_utf16_for_the_editor() {
+        let sql = "SELECT 'é — 日本 🙂' AS x; SELECT 2";
+        let spans = split_sql(Engine::MySql, sql.into()).unwrap();
+        let units: Vec<u16> = sql.encode_utf16().collect();
+        let slice = |(a, b): (usize, usize)| String::from_utf16(&units[a..b]).unwrap();
+        assert_eq!(slice(spans[0]), "SELECT 'é — 日本 🙂' AS x");
+        assert_eq!(slice(spans[1]), "SELECT 2");
+    }
 
     /// Every setting key the frontend reads or saves must have an accepted prefix; otherwise
     /// saving it fails at runtime with "unknown setting" (as the export dialog's remembered
