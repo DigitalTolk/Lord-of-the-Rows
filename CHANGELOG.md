@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.13
+- Export query results to a file: **Export…** in the results toolbar (and the grid's right-click menu) writes CSV, TSV, JSON, JSON Lines, Excel, SQL INSERT, Markdown or XML — for results too big for the clipboard. If a result was cut off at the row limit, its query runs again so every row is exported.
+- Fix: with non-ASCII text (é, emoji, Arabic…) earlier in the editor, "Run" on the current statement could run a shifted piece of SQL.
+
 ## 0.2.12
 - Clearer results header when you run several queries: the result tabs have their own row, are named after their table ("1 · customers 20 rows", "2 · orders 0 rows") and Messages is always visible. The selected result's tools are on the row below, with the row count and time on one line.
 - An empty result says "No rows" instead of showing a blank grid.
