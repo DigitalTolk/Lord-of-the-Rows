@@ -8,6 +8,10 @@ const api = vi.hoisted(() => ({
   describeTable: vi.fn(async () => ({ primary_key: ['id'] })),
   previewChanges: vi.fn(async () => ({ statements: ['UPDATE `shop`.`orders` SET `total` = ? WHERE `id` = ?'], decision: { decision: 'allow' } })),
   applyChanges: vi.fn(async () => ({ committed: true, conflicts: [], applied: 1, rows_affected: 1 })),
+  pickFile: vi.fn(async () => ({ grant: 'g1', name: 'x', display_path: '/tmp/x' })),
+  exportRows: vi.fn(async () => ({ rows: 1, path: '/tmp/x.csv' })),
+  exportQuery: vi.fn(async () => ({ rows: 50000, path: '/tmp/x.csv' })),
+  splitSql: vi.fn(async () => [[0, 9], [10, 40]] as [number, number][]),
 }));
 vi.mock('../lib/ipc', () => ({ api, IpcError: class extends Error {} }));
 
@@ -152,6 +156,37 @@ describe('result tab names', () => {
     render(<Results results={[mk(0, 'SELECT id FROM orders', 'orders', 12), mk(1, 'SELECT COUNT(*) AS id FROM `shop`.`customers` c', null, 0)]} messages={[]} runId="n" />);
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['1 · orders12 rows', '2 · customers0 rows', 'Messages2']);
     expect(screen.getByText('No rows')).toBeTruthy();
+  });
+});
+
+describe('export to a file', () => {
+  const one = (truncated: boolean): StatementResult[] => [
+    { statement_index: 0, sql_excerpt: 'SELECT 1', duration_ms: 1, notices: [], rows_affected: null },
+    { statement_index: 1, sql_excerpt: 'SELECT * FROM feedbacks', duration_ms: 1, notices: [], result: { columns: [{ name: 'id', type_name: 'INT' }], rows: [[{ t: 'int', v: 1 }]], truncated } },
+  ];
+  const sql = 'SELECT 1; SELECT * FROM feedbacks LIMIT 10;';
+
+  it('a complete result writes the rows it has (nothing runs again)', async () => {
+    render(<Results results={one(false)} messages={[]} runId="e1" sessionId="s1" sql={sql} />);
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'CSV…' }));
+    });
+    expect(api.pickFile).toHaveBeenCalledWith(true, 'feedbacks.csv', ['csv']);
+    expect(api.exportRows).toHaveBeenCalledWith('s1', { table: 'feedbacks' }, expect.any(Array), [[{ t: 'int', v: 1 }]], 'g1', expect.objectContaining({ format: 'csv' }));
+    expect(api.exportQuery).not.toHaveBeenCalled();
+  });
+
+  it('a cut-off result runs its own statement again and writes every row', async () => {
+    render(<Results results={one(true)} messages={[]} runId="e2" sessionId="s1" sql={sql} />);
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    expect(screen.getByText(/query runs again/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Excel (XLSX)…' }));
+    });
+    expect(api.splitSql).toHaveBeenCalledWith('mysql', sql);
+    expect(api.exportQuery).toHaveBeenCalledWith('s1', sql.slice(10, 40), 'g1', expect.objectContaining({ format: 'xlsx' }), false);
+    expect(api.exportRows).not.toHaveBeenCalled();
   });
 });
 

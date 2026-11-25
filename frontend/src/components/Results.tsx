@@ -8,6 +8,7 @@ import { fmtNumber } from '../lib/format';
 import { errMsg, useApp } from '../store';
 import { DataGrid, type GridHandle } from './DataGrid';
 import { Icon } from './icons';
+import { MenuPopup } from './ui';
 import { SqlPopover } from './SqlPopover';
 import { useResultEdit } from './useResultEdit';
 import { resultSource } from '../lib/resultEdit';
@@ -21,6 +22,10 @@ import Chart from './Chart';
 /** Shown while the results are filtered by search (edits are paused then). */
 const NO_EDITS = emptyStaged();
 
+const EXPORT_FORMATS: [ExportFormat, string][] = [
+  ['csv', 'CSV'], ['tsv', 'TSV'], ['json', 'JSON'], ['json_lines', 'JSON Lines'], ['xlsx', 'Excel (XLSX)'], ['sql_insert', 'SQL INSERT'], ['markdown', 'Markdown'], ['xml', 'XML'],
+];
+
 type Mode = 'grid' | 'json' | 'text' | 'record' | 'chart';
 
 export async function copyAs(columns: ColumnMeta[], rows: Value[][], format: ExportFormat, table?: string) {
@@ -33,7 +38,7 @@ export async function copyAs(columns: ColumnMeta[], rows: Value[][], format: Exp
  * new result set starts, not on every streamed batch. Without it, every new
  * `results` array counts as a new run.
  */
-export function Results({ results, messages, runId, sessionId }: { results: StatementResult[]; messages: string[]; runId?: string; sessionId?: string }) {
+export function Results({ results, messages, runId, sessionId, sql }: { results: StatementResult[]; messages: string[]; runId?: string; sessionId?: string; sql?: string }) {
   const { t } = useTranslation();
   const toast = useApp((s) => s.toast);
   const withRows = results.filter((r) => r.result);
@@ -81,6 +86,39 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
       e.preventDefault();
       if (e.shiftKey) edit.redo();
       else edit.undo();
+    }
+  };
+
+  // ---- export to a file (the clipboard can't take large results)
+  const engine = useApp((st) => (sessionId ? st.sessions[sessionId]?.config.engine : undefined));
+  const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
+  const [exporting, setExporting] = useState(false);
+  /** A cut-off result is exported in full by running its statement again (read-only only). */
+  const reRunForExport = !!rs?.truncated && !search && !!sql && !!engine;
+  const exportResult = async (format: ExportFormat) => {
+    setExportMenu(null);
+    if (!rs || !current || !sessionId) return;
+    const ext = format === 'json_lines' ? 'jsonl' : format === 'sql_insert' ? 'sql' : format === 'markdown' ? 'md' : format;
+    const name = resultName(current) ?? 'result';
+    const f = await api.pickFile(true, `${name}.${ext}`, [ext]);
+    if (!f) return;
+    const options = { format, header: true, formula_guard: true };
+    setExporting(true);
+    try {
+      let r: { rows: number; path: string };
+      if (reRunForExport) {
+        const spans = await api.splitSql(engine!, sql!);
+        const span = spans[current.statement_index];
+        if (!span) throw new Error(t('results.exportNoStatement'));
+        r = await api.exportQuery(sessionId, sql!.slice(span[0], span[1]), f.grant, options, false);
+      } else {
+        r = await api.exportRows(sessionId, edit.source?.target ?? { table: name }, rs.columns, filteredRows, f.grant, options);
+      }
+      toast('ok', t('io.exported', { count: r.rows, formatted: fmtNumber(r.rows), path: r.path }));
+    } catch (e) {
+      toast('error', errMsg(e));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -173,6 +211,22 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
               <option value="">{t('grid.copyAs')}…</option>
               <option value="csv">CSV</option><option value="tsv">TSV</option><option value="json">JSON</option><option value="sql_insert">SQL INSERT</option><option value="markdown">Markdown</option>
             </select>
+            {sessionId && (
+              <button
+                className="btn h-6 gap-1 px-2"
+                aria-haspopup="menu"
+                aria-expanded={!!exportMenu}
+                disabled={exporting}
+                title={reRunForExport ? t('results.exportAllHint') : t('results.exportShownHint', { count: filteredRows.length, formatted: fmtNumber(filteredRows.length) })}
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setExportMenu(exportMenu ? null : { x: r.left, y: r.bottom + 2 });
+                }}
+              >
+                <Icon name="upload" size={13} />
+                {exporting ? t('results.exporting') : t('results.export')}
+              </button>
+            )}
             {pluginExporters.length > 0 && (
               <select className="input h-6 w-auto py-0" aria-label={t('results.exportWithPlugin')} value="" onChange={(e) => e.target.value && exportViaPlugin(e.target.value)}>
                 <option value="">{t('results.exportWithPluginEllipsis')}</option>
@@ -204,6 +258,16 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
               {rs.truncated && <span className="ms-2 text-warn">{t('query.truncated', { count: rs.rows.length, formatted: fmtNumber(rs.rows.length) })}</span>}
             </span>
         </div>
+      )}
+      {exportMenu && (
+        <MenuPopup x={exportMenu.x} y={exportMenu.y} className="w-64" label={t('results.export')} onClose={() => setExportMenu(null)}>
+          <div className="px-2 py-1 text-xs text-muted">
+            {reRunForExport ? t('results.exportAllHint') : t('results.exportShownHint', { count: filteredRows.length, formatted: fmtNumber(filteredRows.length) })}
+          </div>
+          {EXPORT_FORMATS.map(([f, label]) => (
+            <button key={f} role="menuitem" className="menu-item" onClick={() => void exportResult(f)}>{label}…</button>
+          ))}
+        </MenuPopup>
       )}
       {tab === 'results' && edit.pending > 0 && (
         <div role="group" aria-label={t('tableWs.pendingTitle')} className="flex h-[32px] shrink-0 items-center gap-1 border-b border-border bg-warn/10 px-2 text-sm">
@@ -247,6 +311,7 @@ export function Results({ results, messages, runId, sessionId }: { results: Stat
               onEdit={edit.onEdit}
               onEditMany={edit.onEditMany}
               onDeleteRows={edit.onDeleteRows}
+          onExportPage={sessionId ? (f) => void exportResult(f) : undefined}
               onSelectRows={(r) => {
                 setSelRows(r);
                 if (r.length) setRecordRow(r[0]);

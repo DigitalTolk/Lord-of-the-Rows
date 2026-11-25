@@ -682,7 +682,14 @@
     "rowCount_one": "{{formatted}} fila",
     "rowCount_other": "{{formatted}} filas",
     "noRows": "Sin filas",
-    "rowCount_many": "{{formatted}} filas"
+    "rowCount_many": "{{formatted}} filas",
+    "export": "Exportar",
+    "exporting": "Exportando…",
+    "exportShownHint_one": "Escribe la fila mostrada en un archivo",
+    "exportShownHint_many": "Escribe las {{formatted}} filas mostradas en un archivo",
+    "exportShownHint_other": "Escribe las {{formatted}} filas mostradas en un archivo",
+    "exportAllHint": "Todas las filas: el resultado se recortó, así que la consulta se ejecuta de nuevo y se escriben todas las filas en el archivo",
+    "exportNoStatement": "No se encontró esta sentencia en la consulta"
   },
   "chart": {
     "type": "Tipo de gráfico",
