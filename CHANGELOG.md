@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.14
+- Plain text: copy or export rows as an aligned text table (like the mysql / psql command line) — in the grid's Copy Rows As and Copy Selected Cells As, the results Copy as… and Export…, the table export, and the Export dialog (a .txt file per table).
+
 ## 0.2.13
 - Export query results to a file: **Export…** in the results toolbar (and the grid's right-click menu) writes CSV, TSV, JSON, JSON Lines, Excel, SQL INSERT, Markdown or XML — for results too big for the clipboard. If a result was cut off at the row limit, its query runs again so every row is exported.
 - Fix: with non-ASCII text (é, emoji, Arabic…) earlier in the editor, "Run" on the current statement could run a shifted piece of SQL.
