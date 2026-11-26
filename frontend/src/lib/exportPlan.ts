@@ -2,7 +2,12 @@
 // options, file names (one per table, from a pattern) and whether everything goes in one file.
 import type { ExportFormat, ExportOptions, TableTarget } from './types';
 
-export type ExportKind = 'csv' | 'json' | 'sql' | 'xlsx';
+export type ExportKind = 'csv' | 'json' | 'sql' | 'xlsx' | 'text';
+
+/** File extension for an export format. */
+export function extensionFor(format: ExportFormat): string {
+  return { csv: 'csv', tsv: 'tsv', json: 'json', json_lines: 'jsonl', sql_insert: 'sql', markdown: 'md', xml: 'xml', xlsx: 'xlsx', text: 'txt' }[format];
+}
 
 export interface ExportSettings {
   kind: ExportKind;
@@ -69,11 +74,13 @@ export function formatOf(s: ExportSettings): ExportFormat {
       return 'sql_insert';
     case 'xlsx':
       return 'xlsx';
+    case 'text':
+      return 'text';
   }
 }
 
 export function extensionOf(s: ExportSettings): string {
-  const ext = { csv: s.delimiter === '\t' ? 'tsv' : 'csv', json: s.jsonLines ? 'jsonl' : 'json', sql: 'sql', xlsx: 'xlsx' }[s.kind];
+  const ext = { csv: s.delimiter === '\t' ? 'tsv' : 'csv', json: s.jsonLines ? 'jsonl' : 'json', sql: 'sql', xlsx: 'xlsx', text: 'txt' }[s.kind];
   return s.gzip && s.kind !== 'xlsx' ? `${ext}.gz` : ext;
 }
 

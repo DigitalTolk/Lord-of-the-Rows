@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRequest, DEFAULT_SETTINGS, extensionOf, fileName, fileNames, loadSettings, writesOneFile } from './exportPlan';
+import { buildRequest, DEFAULT_SETTINGS, extensionFor, extensionOf, fileName, fileNames, loadSettings, writesOneFile } from './exportPlan';
 
 const now = new Date(2026, 10, 19, 9, 5, 7);
 const t = (table: string, schema: string | null = 'shop') => ({ schema, table });
@@ -44,3 +44,14 @@ describe('export plan', () => {
     expect(loadSettings(null)).toEqual(DEFAULT_SETTINGS);
   });
 });
+
+describe('plain text export', () => {
+  it('is a .txt file per table', () => {
+    expect(extensionFor('text')).toBe('txt');
+    const s = { ...DEFAULT_SETTINGS, kind: 'text' as const, oneFile: true };
+    expect(extensionOf(s)).toBe('txt');
+    expect(writesOneFile(s, 2)).toBe(false);
+    expect(buildRequest(s, { exportId: 'e', sessionId: 's', tables: [t('a')], grant: 'g', database: 'd', now }).options.format).toBe('text');
+  });
+});
+

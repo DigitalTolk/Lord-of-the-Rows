@@ -43,11 +43,21 @@ brew install --cask DigitalTolk/tools/lord-of-the-rows
 or download the DMG below.
 
 SHA-256: \`$SHA\`"
-if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  gh release upload "$TAG" "${ASSETS[@]}" --repo "$REPO" --clobber
-else
-  gh release create "$TAG" "${ASSETS[@]}" --repo "$REPO" --target "$(git rev-parse HEAD)" --title "Lord of the Rows $VERSION" --notes "$NOTES"
-fi
+# GitHub's API sometimes answers 5xx for a while; retry instead of throwing away the signed,
+# notarized build (a re-run rebuilds and re-notarizes everything).
+publish() {
+  if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+    gh release upload "$TAG" "${ASSETS[@]}" --repo "$REPO" --clobber
+  else
+    gh release create "$TAG" "${ASSETS[@]}" --repo "$REPO" --target "$(git rev-parse HEAD)" --title "Lord of the Rows $VERSION" --notes "$NOTES"
+  fi
+}
+for attempt in 1 2 3 4 5; do
+  publish && break
+  [ "$attempt" = 5 ] && { echo "GitHub release failed after $attempt attempts" >&2; exit 1; }
+  echo "    GitHub release attempt $attempt failed; retrying in $((attempt * 60)) s" >&2
+  sleep $((attempt * 60))
+done
 
 echo "==> Asking $TAP to update the cask"
 # In CI the default token cannot start workflows in another repo: use TAP_TOKEN when given.

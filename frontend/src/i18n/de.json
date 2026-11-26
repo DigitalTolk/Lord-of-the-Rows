@@ -827,7 +827,8 @@
     "pageOnly_one": "nur geladene Seite: {{formatted}} Zeile",
     "pageOnly_other": "nur geladene Seite: {{formatted}} Zeilen",
     "deleteN_one": "{{formatted}} Zeile löschen",
-    "deleteN_other": "{{formatted}} Zeilen löschen"
+    "deleteN_other": "{{formatted}} Zeilen löschen",
+    "fmtText": "Klartext-Tabelle"
   },
   "cdlg": {
     "sslHint": {
@@ -1662,6 +1663,8 @@
     "rows": "{{n}} Zeilen",
     "done": "{{rows}} Zeilen aus {{tables}} Tabellen exportiert",
     "cancelled": "Export abgebrochen. Dateien fertiger Tabellen bleiben erhalten.",
-    "close": "Fertig"
+    "close": "Fertig",
+    "textHint": "Ausgerichtete Spalten wie in der mysql-/psql-Kommandozeile. Eine Datei pro Tabelle.",
+    "text": "Text"
   }
 }

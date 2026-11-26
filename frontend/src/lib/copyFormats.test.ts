@@ -190,3 +190,19 @@ describe('parseClipboard', () => {
     expect(parseClipboard(text)).toEqual([['x\ty', 'q"r'], ['m\nn', '🎉']]);
   });
 });
+
+describe('plain text table', () => {
+  it('aligns columns, right-aligns numbers, spells NULL and keeps values on one line', () => {
+    const text = formatRows('text', {
+      columns: [{ name: 'id', type_name: 'int' }, { name: 'note', type_name: 'text' }],
+      rows: [
+        [{ t: 'int', v: 1 }, { t: 'text', v: 'two\nlines' }],
+        [{ t: 'int', v: 120 }, { t: 'null' }],
+      ],
+    });
+    expect(text).toBe(
+      ['+-----+------------+', '| id  | note       |', '+-----+------------+', '|   1 | two\\nlines |', '| 120 | NULL       |', '+-----+------------+'].join('\n'),
+    );
+  });
+});
+

@@ -14,6 +14,8 @@ pub enum ExportFormat {
     Markdown,
     Xml,
     Xlsx,
+    /// Plain-text table with aligned columns (as the mysql / psql command line prints).
+    Text,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +100,9 @@ pub struct Exporter<W: Write> {
     xlsx: Option<(rust_xlsxwriter::Workbook, u32)>,
     /// Excel: index of the worksheet being written.
     sheet: usize,
+    /// Plain text: column widths, fixed by the header and the first batch of rows (later
+    /// longer values simply overflow), and which columns are right-aligned numbers.
+    text: Option<(Vec<usize>, Vec<bool>)>,
 }
 
 impl<W: Write> Exporter<W> {
@@ -138,9 +143,9 @@ impl<W: Write> Exporter<W> {
                     return Err(DbError::invalid("SQL export requires a target table name"));
                 }
             }
-            ExportFormat::JsonLines => {}
+            ExportFormat::JsonLines | ExportFormat::Text => {}
         }
-        Ok(Self { out, opts, columns: columns.to_vec(), rows_written: 0, csv, xlsx, sheet: 0 })
+        Ok(Self { out, opts, columns: columns.to_vec(), rows_written: 0, csv, xlsx, sheet: 0, text: None })
     }
 
     fn cell_text<'a>(&self, v: &'a Value) -> std::borrow::Cow<'a, str> {
@@ -216,6 +221,16 @@ impl<W: Write> Exporter<W> {
                 for chunk in rows.chunks(self.opts.rows_per_insert.max(1)) {
                     let vals: Vec<String> = chunk.iter().map(|r| format!("({})", r.iter().map(|v| d.literal(v)).collect::<Vec<_>>().join(", "))).collect();
                     writeln!(self.out, "INSERT INTO {t} ({cols}) VALUES\n  {};", vals.join(",\n  ")).map_err(io)?;
+                }
+            }
+            ExportFormat::Text => {
+                if self.text.is_none() {
+                    self.start_text(rows)?;
+                }
+                let (w, num) = self.text.clone().expect("text layout");
+                for r in rows {
+                    let cells: Vec<String> = r.iter().map(text_cell).collect();
+                    write_text_row(&mut self.out, &cells, &w, &num).map_err(io)?;
                 }
             }
             ExportFormat::Xlsx => {
@@ -296,10 +311,39 @@ impl<W: Write> Exporter<W> {
         Ok(self.rows_written)
     }
 
+    /// Plain text: fix the layout from the header and the first rows, write the header box.
+    fn start_text(&mut self, rows: &[Vec<Value>]) -> DbResult<()> {
+        let n = self.columns.len();
+        let mut w: Vec<usize> = self.columns.iter().map(|c| c.name.chars().count()).collect();
+        let mut num = vec![!rows.is_empty(); n];
+        for r in rows {
+            for (i, v) in r.iter().enumerate().take(n) {
+                w[i] = w[i].max(text_cell(v).chars().count());
+                if !matches!(v, Value::Null | Value::Int(_) | Value::Float(_) | Value::BigInt(_) | Value::Decimal(_)) {
+                    num[i] = false;
+                }
+            }
+        }
+        let border = text_border(&w);
+        writeln!(self.out, "{border}").map_err(io)?;
+        let names: Vec<String> = self.columns.iter().map(|c| c.name.clone()).collect();
+        write_text_row(&mut self.out, &names, &w, &vec![false; n]).map_err(io)?;
+        writeln!(self.out, "{border}").map_err(io)?;
+        self.text = Some((w, num));
+        Ok(())
+    }
+
     fn close(&mut self) -> DbResult<()> {
         match self.opts.format {
             ExportFormat::Json => self.out.write_all(b"\n]\n").map_err(io)?,
             ExportFormat::Xml => self.out.write_all(b"</rows>\n").map_err(io)?,
+            ExportFormat::Text => {
+                if self.text.is_none() {
+                    self.start_text(&[])?;
+                }
+                let border = text_border(&self.text.as_ref().expect("text layout").0);
+                writeln!(self.out, "{border}").map_err(io)?;
+            }
             ExportFormat::Xlsx => {
                 let (mut wb, _) = self.xlsx.take().unwrap();
                 let buf = wb.save_to_buffer().map_err(xl)?;
@@ -350,6 +394,37 @@ impl CsvStyle {
         }
         w.into_inner().map_err(|e| DbError::new(ErrorKind::Io, e.to_string()))
     }
+}
+
+/// One cell of a plain-text table: NULL spelled out, line breaks and tabs kept on one line.
+fn text_cell(v: &Value) -> String {
+    match v.to_plain() {
+        None => "NULL".into(),
+        Some(s) => s.replace("\r\n", "\\n").replace('\n', "\\n").replace('\r', "\\r").replace('\t', " "),
+    }
+}
+
+fn text_border(w: &[usize]) -> String {
+    let mut s = String::from("+");
+    for n in w {
+        s.push_str(&"-".repeat(n + 2));
+        s.push('+');
+    }
+    s
+}
+
+fn write_text_row(out: &mut impl Write, cells: &[String], w: &[usize], num: &[bool]) -> std::io::Result<()> {
+    let mut line = String::from("|");
+    for (i, c) in cells.iter().enumerate() {
+        let width = w.get(i).copied().unwrap_or(0);
+        let pad = " ".repeat(width.saturating_sub(c.chars().count()));
+        if num.get(i).copied().unwrap_or(false) {
+            line.push_str(&format!(" {pad}{c} |"));
+        } else {
+            line.push_str(&format!(" {c}{pad} |"));
+        }
+    }
+    writeln!(out, "{line}")
 }
 
 /// A valid, unique Excel worksheet name for `want`.
@@ -488,6 +563,24 @@ mod tests {
         assert_eq!(all, "\"id\",\"name\"\n\"-2\",\"\"\n");
         assert!(export_to_string(&cols(), &rows(), ExportOptions { delimiter: Some('"'), ..Default::default() }).is_err());
         assert!(export_to_string(&cols(), &rows(), ExportOptions { line_break: Some("\t".into()), ..Default::default() }).is_err());
+    }
+
+    #[test]
+    fn plain_text_table() {
+        let s = export_to_string(&cols(), &rows(), ExportOptions { format: ExportFormat::Text, ..Default::default() }).unwrap();
+        assert_eq!(
+            s,
+            "+------------------+---------------------------+\n\
+             | id               | name                      |\n\
+             +------------------+---------------------------+\n\
+             |                1 | =HYPERLINK(\"http://evil\") |\n\
+             |               -2 | NULL                      |\n\
+             | 9007199254740993 | a,\"b\"\\nc                  |\n\
+             +------------------+---------------------------+\n"
+        );
+        // No rows: still a header box.
+        let empty = export_to_string(&cols(), &[], ExportOptions { format: ExportFormat::Text, ..Default::default() }).unwrap();
+        assert_eq!(empty, "+----+------+\n| id | name |\n+----+------+\n+----+------+\n");
     }
 
     #[test]

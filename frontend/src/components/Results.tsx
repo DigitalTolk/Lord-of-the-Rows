@@ -12,6 +12,7 @@ import { MenuPopup } from './ui';
 import { SqlPopover } from './SqlPopover';
 import { useResultEdit } from './useResultEdit';
 import { resultSource } from '../lib/resultEdit';
+import { extensionFor } from '../lib/exportPlan';
 import { RowDetailPanel } from './RowDetailPanel';
 import { DETAIL_SHORTCUT, detailWidth } from '../lib/detailPanel';
 import { emptyStaged } from '../lib/changes';
@@ -23,7 +24,7 @@ import Chart from './Chart';
 const NO_EDITS = emptyStaged();
 
 const EXPORT_FORMATS: [ExportFormat, string][] = [
-  ['csv', 'CSV'], ['tsv', 'TSV'], ['json', 'JSON'], ['json_lines', 'JSON Lines'], ['xlsx', 'Excel (XLSX)'], ['sql_insert', 'SQL INSERT'], ['markdown', 'Markdown'], ['xml', 'XML'],
+  ['csv', 'CSV'], ['tsv', 'TSV'], ['text', 'Plain text'], ['json', 'JSON'], ['json_lines', 'JSON Lines'], ['xlsx', 'Excel (XLSX)'], ['sql_insert', 'SQL INSERT'], ['markdown', 'Markdown'], ['xml', 'XML'],
 ];
 
 type Mode = 'grid' | 'json' | 'text' | 'record' | 'chart';
@@ -98,7 +99,7 @@ export function Results({ results, messages, runId, sessionId, sql }: { results:
   const exportResult = async (format: ExportFormat) => {
     setExportMenu(null);
     if (!rs || !current || !sessionId) return;
-    const ext = format === 'json_lines' ? 'jsonl' : format === 'sql_insert' ? 'sql' : format === 'markdown' ? 'md' : format;
+    const ext = extensionFor(format);
     const name = resultName(current) ?? 'result';
     const f = await api.pickFile(true, `${name}.${ext}`, [ext]);
     if (!f) return;
@@ -209,7 +210,7 @@ export function Results({ results, messages, runId, sessionId, sql }: { results:
             <input className="input ms-2 h-6 w-48" placeholder={t('grid.searchResults')} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t('grid.searchResults')} />
             <select className="input h-6 w-auto py-0" aria-label={t('grid.copyAs')} value="" onChange={(e) => e.target.value && copy([], [], e.target.value as ExportFormat)}>
               <option value="">{t('grid.copyAs')}…</option>
-              <option value="csv">CSV</option><option value="tsv">TSV</option><option value="json">JSON</option><option value="sql_insert">SQL INSERT</option><option value="markdown">Markdown</option>
+              <option value="csv">CSV</option><option value="tsv">TSV</option><option value="text">{t('gridMenu.fmtText')}</option><option value="json">JSON</option><option value="sql_insert">SQL INSERT</option><option value="markdown">Markdown</option>
             </select>
             {sessionId && (
               <button
