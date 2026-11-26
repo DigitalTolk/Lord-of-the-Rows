@@ -7,7 +7,7 @@ import type { ColumnMeta, ExportFormat } from '../lib/types';
 import { Icon } from './icons';
 import { SqlPopover } from './SqlPopover';
 
-const EXPORTS: [ExportFormat, string][] = [['csv', 'CSV'], ['tsv', 'TSV'], ['json', 'JSON'], ['json_lines', 'JSON Lines'], ['sql_insert', 'SQL INSERT'], ['xlsx', 'Excel (XLSX)'], ['markdown', 'Markdown'], ['xml', 'XML']];
+const EXPORTS: [ExportFormat, string][] = [['csv', 'CSV'], ['tsv', 'TSV'], ['text', 'Plain text'], ['json', 'JSON'], ['json_lines', 'JSON Lines'], ['sql_insert', 'SQL INSERT'], ['xlsx', 'Excel (XLSX)'], ['markdown', 'Markdown'], ['xml', 'XML']];
 
 export interface FilterBarProps {
   tabId: string;

@@ -103,7 +103,7 @@ export function ExportDialog({ s, req, onClose }: { s: OpenSession; req: ExportR
   };
   const cancel = () => exportId.current && void api.cancelQuery(exportId.current);
 
-  const kinds: [ExportKind, string][] = [['csv', 'CSV'], ['json', 'JSON'], ['sql', 'SQL'], ['xlsx', 'Excel']];
+  const kinds: [ExportKind, string][] = [['csv', 'CSV'], ['text', t('export.text')], ['json', 'JSON'], ['sql', 'SQL'], ['xlsx', 'Excel']];
   const check = (k: keyof ExportSettings, label: string, hint?: string) => (
     <label className="flex items-start gap-2 py-0.5" title={hint}>
       <input type="checkbox" className="mt-[3px]" checked={o[k] as boolean} onChange={(e) => set(k, e.target.checked as never)} />
@@ -250,6 +250,7 @@ export function ExportDialog({ s, req, onClose }: { s: OpenSession; req: ExportR
                   ))}
                 </>
               )}
+              {o.kind === 'text' && <p className="text-sm text-muted">{t('export.textHint')}</p>}
               {o.kind === 'xlsx' && (
                 <>
                   {check('header', t('export.header'))}

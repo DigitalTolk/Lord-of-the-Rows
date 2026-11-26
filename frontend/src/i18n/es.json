@@ -858,7 +858,8 @@
     "pageOnly_other": "solo la página cargada: {{formatted}} filas",
     "deleteN_one": "Eliminar {{formatted}} fila",
     "deleteN_many": "Eliminar {{formatted}} filas",
-    "deleteN_other": "Eliminar {{formatted}} filas"
+    "deleteN_other": "Eliminar {{formatted}} filas",
+    "fmtText": "Tabla en texto plano"
   },
   "cdlg": {
     "sslHint": {
@@ -1760,6 +1761,8 @@
     "rows": "{{n}} filas",
     "done": "Exportadas {{rows}} filas de {{tables}} tablas",
     "cancelled": "Exportación cancelada. Se conservaron los archivos de las tablas terminadas.",
-    "close": "Listo"
+    "close": "Listo",
+    "textHint": "Columnas alineadas, como en la línea de comandos de mysql / psql. Un archivo por tabla.",
+    "text": "Texto"
   }
 }

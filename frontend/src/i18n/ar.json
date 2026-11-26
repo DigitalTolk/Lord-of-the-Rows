@@ -951,7 +951,8 @@
     "deleteN_two": "حذف صفين",
     "deleteN_few": "حذف {{formatted}} صفوف",
     "deleteN_many": "حذف {{formatted}} صفًا",
-    "deleteN_other": "حذف {{formatted}} صف"
+    "deleteN_other": "حذف {{formatted}} صف",
+    "fmtText": "جدول نص عادي"
   },
   "cdlg": {
     "sslHint": {
@@ -2054,6 +2055,8 @@
     "rows": "{{n}} صف",
     "done": "تم تصدير {{rows}} صف من {{tables}} جدول",
     "cancelled": "أُلغي التصدير. احتُفظ بملفات الجداول المكتملة.",
-    "close": "تم"
+    "close": "تم",
+    "textHint": "أعمدة محاذاة مثل سطر أوامر mysql / psql. ملف لكل جدول.",
+    "text": "نص"
   }
 }

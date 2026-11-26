@@ -250,7 +250,7 @@ export interface AuditEntry {
 }
 export interface AuditFilter { category?: string; outcome?: string; connection_id?: string; text?: string; since?: string; until?: string; limit?: number; before_seq?: number }
 
-export type ExportFormat = 'csv' | 'tsv' | 'json' | 'json_lines' | 'sql_insert' | 'markdown' | 'xml' | 'xlsx';
+export type ExportFormat = 'csv' | 'tsv' | 'json' | 'json_lines' | 'sql_insert' | 'markdown' | 'xml' | 'xlsx' | 'text';
 export interface ExportOptions { format: ExportFormat; header?: boolean; null_text?: string; formula_guard?: boolean; dialect?: string | null; table?: TableTarget | null; rows_per_insert?: number }
 
 export type InferredType = 'integer' | 'decimal' | 'boolean' | 'date' | 'timestamp' | 'json' | 'text';

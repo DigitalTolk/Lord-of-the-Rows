@@ -19,6 +19,7 @@ import { selectTab, useTableWs, type PendingActions } from '../lib/tableWorkspac
 import { clampDetailWidth, detailWidth, onRowsSelected, saveDetailWidth, setDetailPanel } from '../lib/detailPanel';
 import type { ExportFormat, FilterCondition, ResultSet, SortDir, TableDescription, Value } from '../lib/types';
 import { useTableGridActions } from './useTableGridActions';
+import { extensionFor } from '../lib/exportPlan';
 import { errMsg, useApp, type Tab } from '../store';
 
 /** Above this estimated size the exact COUNT(*) is only run on request. */
@@ -276,7 +277,7 @@ export function TableView({ tab }: { tab: Tab }) {
 
   const exportAll = async (format: ExportFormat) => {
     if (!s) return;
-    const ext = format === 'json_lines' ? 'jsonl' : format === 'sql_insert' ? 'sql' : format === 'markdown' ? 'md' : format;
+    const ext = extensionFor(format);
     const f = await api.pickFile(true, `${target.table}.${ext}`, [ext]);
     if (!f) return;
     try {

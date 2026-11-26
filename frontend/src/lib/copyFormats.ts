@@ -7,7 +7,7 @@
 import type { ColumnMeta, Engine, TableTarget, Value } from './types';
 import { family, type DialectFamily } from './sqlgen';
 
-export type CopyFormat = 'tsv' | 'csv' | 'json' | 'sql_insert' | 'sql_update' | 'markdown';
+export type CopyFormat = 'tsv' | 'csv' | 'json' | 'sql_insert' | 'sql_update' | 'markdown' | 'text';
 
 /** A copy that cannot be produced faithfully (e.g. truncated binary into SQL). */
 /** `message` is an i18n key (English text in en.json); the grid translates it when showing the toast. */
@@ -218,6 +218,19 @@ function markdown(input: CopyInput): string {
   return [head, sep, ...body].join('\n');
 }
 
+/** Plain-text table with aligned columns (as the mysql / psql command line prints); numbers right-aligned. */
+function textTable(input: CopyInput): string {
+  const cell = (v: Value) => plainText(v, input.nullText ?? 'NULL').replace(/\r\n|\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, ' ');
+  const cells = input.rows.map((r) => r.map(cell));
+  const len = (s: string) => [...s].length;
+  const w = input.columns.map((c, i) => Math.max(len(c.name), ...cells.map((r) => len(r[i] ?? ''))));
+  const numeric = input.columns.map((_, i) => input.rows.length > 0 && input.rows.every((r) => ['null', 'int', 'float', 'big_int', 'decimal'].includes(r[i]?.t)));
+  const border = '+' + w.map((n) => '-'.repeat(n + 2)).join('+') + '+';
+  const line = (vals: string[], head: boolean) =>
+    '| ' + vals.map((v, i) => (numeric[i] && !head ? ' '.repeat(w[i] - len(v)) + v : v + ' '.repeat(w[i] - len(v)))).join(' | ') + ' |';
+  return [border, line(input.columns.map((c) => c.name), true), border, ...cells.map((r) => line(r, false)), border].join('\n');
+}
+
 function sqlInsert(input: CopyInput): string {
   const d = dialectOf(input.engine);
   const table = qualifiedTable(input, d);
@@ -258,6 +271,8 @@ export function formatRows(format: CopyFormat, input: CopyInput): string {
       return json(input);
     case 'markdown':
       return markdown(input);
+    case 'text':
+      return textTable(input);
     case 'sql_insert':
       return sqlInsert(input);
     case 'sql_update':

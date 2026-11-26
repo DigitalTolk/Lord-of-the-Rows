@@ -85,9 +85,10 @@ const COPY_FORMATS: { id: string; fmt: CopyFormat; header: boolean; label: strin
   { id: 'ins', fmt: 'sql_insert', header: true, label: 'gridMenu.fmtSqlInsert' },
   { id: 'upd', fmt: 'sql_update', header: true, label: 'gridMenu.fmtSqlUpdate' },
   { id: 'md', fmt: 'markdown', header: true, label: 'gridMenu.fmtMarkdown' },
+  { id: 'txt', fmt: 'text', header: true, label: 'gridMenu.fmtText' },
 ];
 const EXPORT_FORMATS: [ExportFormat, string][] = [
-  ['csv', 'CSV'], ['tsv', 'TSV'], ['json', 'JSON'], ['json_lines', 'JSON Lines'], ['sql_insert', 'SQL INSERT'], ['xlsx', 'Excel (XLSX)'], ['markdown', 'Markdown'], ['xml', 'XML'],
+  ['csv', 'CSV'], ['tsv', 'TSV'], ['text', 'Plain text'], ['json', 'JSON'], ['json_lines', 'JSON Lines'], ['sql_insert', 'SQL INSERT'], ['xlsx', 'Excel (XLSX)'], ['markdown', 'Markdown'], ['xml', 'XML'],
 ];
 
 const truncatedBytes = (v: Value) => v.t === 'bytes' && v.v.truncated;
